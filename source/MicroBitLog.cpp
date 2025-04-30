@@ -1146,6 +1146,7 @@ int MicroBitLog::_readSource( uint8_t *&data, uint32_t &index, uint32_t &len, ui
 */
 uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
 {
+    return 15;
     constexpr uint8_t rowSeparator = 10; // newline char
     uint32_t rowCount = 0;
 
