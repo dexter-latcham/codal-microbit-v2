@@ -218,7 +218,8 @@ namespace codal
         bool                            headingsChanged;    // Flag to indicate if a row has been added that contains new columns.
         bool                            timeStampChanged;   // Flag to indicate if a timestamp format has changed.
 
-        struct ColumnEntry*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
+        ManagedString *currentHeadings;
+        float*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
         struct MicroBitLogMetaData      metaData;           // Snapshot of the metadata held in flash storage.
         TimeStampFormat                 timeStampFormat;    // The format of timestamp to log on each row.
         ManagedString                   timeStampHeading;   // The title of the timestamp column, including units.
@@ -308,7 +309,7 @@ namespace codal
          * 
          * @return DEVICE_OK on success.
          */
-        int logData(const char *key, const char *value);
+        int logData(const char *key, float value);
 
         /**
          * Populates the current row with the given key/value pair.
@@ -317,7 +318,7 @@ namespace codal
          *
          * @return DEVICE_OK on success.
          */
-        int logData(ManagedString key, ManagedString value);
+        int logData(ManagedString key, float value);
 
         /**
          * Complete a row in the log, and pushes to persistent storage.
@@ -394,7 +395,7 @@ namespace codal
         void _setTimeStamp(TimeStampFormat format);
         int _beginRow();
         int _endRow();
-        int _logData(ManagedString key, ManagedString value);
+        int _logData(ManagedString key, float value);
         int _logString(const char *s);
         int _logString(ManagedString s);
 
@@ -422,7 +423,7 @@ namespace codal
          * @param value the initial value to add, or ManagedString::EmptyString
          * @param head true to add the given field at the front of the list, false to add at the end.
          */
-        void addHeading(ManagedString key, ManagedString value, bool head = false);
+        void addHeading(ManagedString key, float value, bool head = false);
 
         /**
          * Clean the given buffer of invalid LogFS symbols ("-->" and optionally ",\t\n")

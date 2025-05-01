@@ -24,6 +24,7 @@ DEALINGS IN THE SOFTWARE.
 
 #include "MicroBitLog.h"
 #include "CodalDmesg.h"
+#include <cmath>
 #include <new>
 
 #define ARRAY_LEN(array)    (sizeof(array) / sizeof(array[0]))
@@ -69,6 +70,7 @@ MicroBitLog::MicroBitLog(MicroBitUSBFlashManager &flash, MicroBitPowerManager &p
     this->logEnd = 0;
     this->headingsChanged = false;
     this->timeStampChanged = false;
+    this->currentHeadings = NULL;
     this->rowData = NULL;
     this->timeStampFormat = TimeStampFormat::None;
 }
@@ -167,16 +169,14 @@ void MicroBitLog::init()
                 }
             }
 
+            currentHeadings=(ManagedString*) malloc(sizeof(ManagedString)*headingCount);
             // Allocate a RAM buffer to hold key/value pairs matching those defined
-            rowData = (ColumnEntry *) malloc(sizeof(ColumnEntry) * headingCount);
+            rowData = (float *) malloc(sizeof(float) * headingCount);
 
-            // Populate each entry.
-            int i=0;
             for (uint32_t h=0; h<headingCount; h++)
             {
-                new (&rowData[h]) ColumnEntry;
-                rowData[h].key = ManagedString(&headers[i]);
-                i = i + rowData[h].key.length() + 1;
+                currentHeadings[h]=ManagedString(&headers[h]);
+                rowData[h]=NAN;
             }
 
             free(headers);
@@ -271,6 +271,11 @@ void MicroBitLog::_clear(bool fullErase)
         rowData = NULL;
     }
 
+    if (currentHeadings)
+    {
+        free(currentHeadings);
+        currentHeadings=NULL;
+    }
     // Erase block associated with the FULL indicator. We don't perform a pag eerase here to reduce flash wear.
     uint32_t zero = 0x00000000;
     flash.write(logEnd, &zero, 1);
@@ -377,7 +382,7 @@ void MicroBitLog::_setTimeStamp(TimeStampFormat format)
     if (dataStart == dataEnd && headingCount > 0)
     {
         // If this timestamp has already been added. If so, nothing to do.
-        if (rowData[0].key == timeStampHeading)
+        if (currentHeadings[0]== timeStampHeading)
             return;
 
         // If we've already defined a timestamp heading, remove that timestamp from the list of headings.
@@ -385,7 +390,7 @@ void MicroBitLog::_setTimeStamp(TimeStampFormat format)
         {
             // Remove the Timestamp column from the list of headings.
             for (uint32_t i=1; i<headingCount; i++)
-                rowData[i-1].key = rowData[i].key;
+                currentHeadings[i-1]= currentHeadings[i];
 
             headingCount--;
         }
@@ -443,7 +448,7 @@ int MicroBitLog::_beginRow()
 
     // Reset all values, ready to populate with a new row.
     for (uint32_t i=0; i<headingCount; i++)
-        rowData[i].value = ManagedString();
+        rowData[i]=NAN;
 
     // indicate that we've started a new row.
     status |= MICROBIT_LOG_STATUS_ROW_STARTED;
@@ -458,9 +463,9 @@ int MicroBitLog::_beginRow()
  * 
  * @return DEVICE_OK on success.
  */
-int MicroBitLog::logData(const char *key, const char *value)
+int MicroBitLog::logData(const char *key, float value)
 {
-    return logData(ManagedString(key), ManagedString(value));
+    return logData(ManagedString(key), value);
 }
 
 /**
@@ -470,7 +475,7 @@ int MicroBitLog::logData(const char *key, const char *value)
  *
  * @return DEVICE_OK on success.
  */
-int MicroBitLog::logData(ManagedString key, ManagedString value)
+int MicroBitLog::logData(ManagedString key, float value)
 {
     int r;
 
@@ -488,7 +493,7 @@ int MicroBitLog::logData(ManagedString key, ManagedString value)
  *
  * @return DEVICE_OK on success.
  */
-int MicroBitLog::_logData(ManagedString key, ManagedString value)
+int MicroBitLog::_logData(ManagedString key, float value)
 {
     // Perform lazy instatiation if necessary.
     init();
@@ -498,22 +503,17 @@ int MicroBitLog::_logData(ManagedString key, ManagedString value)
         _beginRow();
 
     ManagedString k = cleanBuffer(key.toCharArray(), key.length());
-    ManagedString v = cleanBuffer(value.toCharArray(), value.length());
 
     if (k.length())
         key = k;
-
-    if (v.length())
-        value = v;
 
     // Add the given key/value pair into our cumulative row data. 
     bool added = false;
     for (uint32_t i=0; i<headingCount; i++)
     {
-        if(rowData[i].key == key)
+        if(currentHeadings[i]== key)
         {
-            rowData[i].value = value;
-            added = true;
+            rowData[i]= value;
             break;
         }
     }
@@ -557,7 +557,7 @@ int MicroBitLog::_endRow()
     {
         timeStampChanged = false;
         if (timeStampFormat != TimeStampFormat::None)
-            addHeading(timeStampHeading, ManagedString::EmptyString, dataStart == dataEnd);
+            addHeading(timeStampHeading, NAN, dataStart == dataEnd);
     }
 
     // Special case the condition where no values are present.
@@ -566,8 +566,7 @@ int MicroBitLog::_endRow()
 
     for (uint32_t i=0; i<headingCount; i++)
     {
-        if(rowData[i].value != ManagedString::EmptyString)
-        {
+        if(! std::isnan(rowData[i])){
             validData = true;
             break;
         }
@@ -578,35 +577,7 @@ int MicroBitLog::_endRow()
     {
         // handle 32 bit overflow and fractional components of timestamp
         CODAL_TIMESTAMP t = system_timer_current_time() / (CODAL_TIMESTAMP)timeStampFormat;
-        int billions = t / (CODAL_TIMESTAMP) 1000000000;
-        int units = t % (CODAL_TIMESTAMP) 1000000000;
-        int fraction = 0;
-
-        if ((int)timeStampFormat > 1)
-        {
-            fraction = units % 100;
-            units = units / 100;
-            billions = billions / 100;
-        }
-
-        ManagedString u(units);
-        ManagedString f(fraction);
-        ManagedString s;
-        f = padString(f, 2);
-
-        if (billions)
-        {
-            s = s + billions;
-            u = padString(u, 9);
-        }
-
-        s = s + u;
-
-        // Add two decimal places for anything other than milliseconds.
-        if ((int)timeStampFormat > 1)
-            s = s + "." + f;
-
-        _logData(timeStampHeading, s);
+        _logData(timeStampHeading, NAN);
     }
 
     // If new columns have been added since the last row, update persistent storage accordingly.
@@ -624,7 +595,7 @@ int MicroBitLog::_endRow()
 
         for (uint32_t i=0; i<headingCount;i++)
         {
-            h = h + rowData[i].key;
+            h = h + currentHeadings[i];
             if (i + 1 != headingCount)
                 h = h + sep;
         }
@@ -640,24 +611,22 @@ int MicroBitLog::_endRow()
         headingsChanged = false;
     }
 
-    // Serialize data to CSV
-    ManagedString row;
+    uint8_t *rowBuffer = (uint8_t*)malloc(sizeof(float)*headingCount);
+
     bool empty = true;
-
-    for (uint32_t i=0; i<headingCount;i++)
-    {
-        row = row + rowData[i].value;
-         
-        if (rowData[i].value.length())
-            empty = false;
-
-        if (i + 1 != headingCount)
-            row = row + sep;
+    for (uint32_t i = 0; i < headingCount; i++)
+        if(! std::isnan(rowData[i])){
+            empty=false;
+        }
+        memcpy(rowBuffer+i*sizeof(float),rowData[i],sizeof(float));
     }
-    row = row + "\n";
 
-    if (!empty)
-        _logString(row);
+    if (!empty){
+        ManagedString rowString = ManagedString((char*)rowBuffer);
+        rowString = rowString+"\n";
+        _logString(rowString);
+    }
+    free(rowBuffer);
 
     status &= ~MICROBIT_LOG_STATUS_ROW_STARTED;
 
@@ -858,34 +827,37 @@ int MicroBitLog::_logString(ManagedString s)
  * @param value the initial value to add, or ManagedString::EmptyString
  * @param head true to add the given field at the front of the list, false to add at the end.
  */
-void MicroBitLog::addHeading(ManagedString key, ManagedString value, bool head)
+void MicroBitLog::addHeading(ManagedString key, float value, bool head)
 {
     for (uint32_t i=0; i<headingCount; i++)
-        if (rowData[i].key == key)
+        if (currentHeadings[i]== key)
             return;
 
-    ColumnEntry* newRowData = (ColumnEntry *) malloc(sizeof(ColumnEntry) * (headingCount+1));
+    float* newRowData = (float*) malloc(sizeof(float)*(headingCount+1));
+    ManagedBuffer* newStoredHeadings = (ManagedBuffer*) malloc(sizeof(ManagedBuffer)*(headingCount+1));
+
     int columnShift = head ? 1 : 0;
     int newColumn = head ? 0 : headingCount;
 
     for (uint32_t i=0; i<headingCount; i++)
     {
-        new (&newRowData[i+columnShift]) ColumnEntry;
-        newRowData[i+columnShift].key = rowData[i].key;
-        newRowData[i+columnShift].value = rowData[i].value;
-        rowData[i].key = ManagedString::EmptyString;
-        rowData[i].value = ManagedString::EmptyString;
+        newRowData[i+columnShift]=rowData[i];
+        newStoredHeadings[i+columnShift]=currentHeadings[i];
+        
+        rowData[i] = NAN;
+        currentHeadings[i]=ManagedString::EmptyString;
     }   
-    
     if (rowData)
         free(rowData);
+    if(currentHeadings)
+        free(currentHeadings);
 
-    new (&newRowData[newColumn]) ColumnEntry;
-    newRowData[newColumn].key = key;
-    newRowData[newColumn].value = value;
+    newRowData[newColumn]=value;
+    newStoredHeadings[newColumn]=key;
     headingCount++;
 
     rowData = newRowData;
+    currentHeadings=newStoredHeadings;
     headingsChanged = true;
 }
 
