@@ -143,7 +143,7 @@ namespace codal
     {
         public:
         ManagedString key;
-        ManagedString value;
+        float value;
     };
 
     
@@ -218,8 +218,7 @@ namespace codal
         bool                            headingsChanged;    // Flag to indicate if a row has been added that contains new columns.
         bool                            timeStampChanged;   // Flag to indicate if a timestamp format has changed.
 
-        ManagedString *currentHeadings;
-        float*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
+        struct ColumnEntry*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
         struct MicroBitLogMetaData      metaData;           // Snapshot of the metadata held in flash storage.
         TimeStampFormat                 timeStampFormat;    // The format of timestamp to log on each row.
         ManagedString                   timeStampHeading;   // The title of the timestamp column, including units.
