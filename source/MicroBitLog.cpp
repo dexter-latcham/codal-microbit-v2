@@ -160,7 +160,7 @@ void MicroBitLog::init()
             // Also terminate each entry as a string as we go.
             for (uint32_t i=0; i<headingLength; i++)
             {
-                if (headers[i] == ',' || headers[i] == '\n')
+                if (headers[i] == ',' || headers[i] == '\n' || headers[i] == '\r')
                 {
                     headers[i] = 0;
                     headingCount++;
@@ -176,7 +176,7 @@ void MicroBitLog::init()
             {
                 new (&rowData[h]) ColumnEntry;
                 rowData[h].key = ManagedString(&headers[i]);
-                rowData[h].value=NAN;
+                rowData[h].value = -1;
                 i = i + rowData[h].key.length() + 1;
             }
 
@@ -444,7 +444,7 @@ int MicroBitLog::_beginRow()
 
     // Reset all values, ready to populate with a new row.
     for (uint32_t i=0; i<headingCount; i++)
-        rowData[i].value = NAN;
+        rowData[i].value = -1;
 
     // indicate that we've started a new row.
     status |= MICROBIT_LOG_STATUS_ROW_STARTED;
@@ -498,7 +498,7 @@ int MicroBitLog::_logData(ManagedString key, float value)
     if (!(status & MICROBIT_LOG_STATUS_ROW_STARTED))
         _beginRow();
 
-    ManagedString k = cleanBuffer(key.toCharArray(), key.length());
+    ManagedString k = cleanBuffer(key.toCharArray(), key.length(),false);
 
     if (k.length())
         key = k;
@@ -516,9 +516,10 @@ int MicroBitLog::_logData(ManagedString key, float value)
         }
     }
 
+    float tmpValue = value;
     // If the requested heading is not available, add it.
     if (!added)
-        addHeading(key, value);
+        addHeading(key, tmpValue);
 
     return DEVICE_OK;
 }
@@ -555,7 +556,7 @@ int MicroBitLog::_endRow()
     {
         timeStampChanged = false;
         if (timeStampFormat != TimeStampFormat::None)
-            addHeading(timeStampHeading, NAN, dataStart == dataEnd);
+            addHeading(timeStampHeading, -1, dataStart == dataEnd);
     }
 
     // Special case the condition where no values are present.
@@ -564,7 +565,8 @@ int MicroBitLog::_endRow()
 
     for (uint32_t i=0; i<headingCount; i++)
     {
-        if(! std::isnan(rowData[i].value)){
+        if(rowData[i].value != -1)
+        {
             validData = true;
             break;
         }
@@ -573,37 +575,37 @@ int MicroBitLog::_endRow()
     // Insert timestamp field if requested.
     if (validData && timeStampFormat != TimeStampFormat::None)
     {
-        // handle 32 bit overflow and fractional components of timestamp
-        CODAL_TIMESTAMP t = system_timer_current_time() / (CODAL_TIMESTAMP)timeStampFormat;
-        int billions = t / (CODAL_TIMESTAMP) 1000000000;
-        int units = t % (CODAL_TIMESTAMP) 1000000000;
-        int fraction = 0;
+        // // handle 32 bit overflow and fractional components of timestamp
+        // CODAL_TIMESTAMP t = system_timer_current_time() / (CODAL_TIMESTAMP)timeStampFormat;
+        // int billions = t / (CODAL_TIMESTAMP) 1000000000;
+        // int units = t % (CODAL_TIMESTAMP) 1000000000;
+        // int fraction = 0;
 
-        if ((int)timeStampFormat > 1)
-        {
-            fraction = units % 100;
-            units = units / 100;
-            billions = billions / 100;
-        }
+        // if ((int)timeStampFormat > 1)
+        // {
+        //     fraction = units % 100;
+        //     units = units / 100;
+        //     billions = billions / 100;
+        // }
 
-        ManagedString u(units);
-        ManagedString f(fraction);
-        ManagedString s;
-        f = padString(f, 2);
+        // ManagedString u(units);
+        // ManagedString f(fraction);
+        // ManagedString s;
+        // f = padString(f, 2);
 
-        if (billions)
-        {
-            s = s + billions;
-            u = padString(u, 9);
-        }
+        // if (billions)
+        // {
+        //     s = s + billions;
+        //     u = padString(u, 9);
+        // }
 
-        s = s + u;
+        // s = s + u;
 
-        // Add two decimal places for anything other than milliseconds.
-        if ((int)timeStampFormat > 1)
-            s = s + "." + f;
+        // // Add two decimal places for anything other than milliseconds.
+        // if ((int)timeStampFormat > 1)
+        //     s = s + "." + f;
 
-        _logData(timeStampHeading, 0);
+        _logData(timeStampHeading, (float)1);
     }
 
     // If new columns have been added since the last row, update persistent storage accordingly.
@@ -611,9 +613,6 @@ int MicroBitLog::_endRow()
 
     if (headingsChanged)
     {
-        // If this is the first time we have logged any headings, place them just after the metadata block
-        if (headingStart == 0)
-            headingStart = startAddress + sizeof(MicroBitLogMetaData);
 
         // create new headers
         ManagedString h;
@@ -625,7 +624,13 @@ int MicroBitLog::_endRow()
             if (i + 1 != headingCount)
                 h = h + sep;
         }
-        h = h + "\n";
+
+        // If this is the first time we have logged any headings, place them just after the metadata block
+        if (headingStart == 0){
+            headingStart = startAddress + sizeof(MicroBitLogMetaData);
+        }else{
+            h = "\n"+h;
+        }
         
         cache.write(headingStart, &zero[0], headingLength);
         headingStart += headingLength;
@@ -637,30 +642,17 @@ int MicroBitLog::_endRow()
         headingsChanged = false;
     }
 
-    // Serialize data to CSV
-    ManagedString row;
-    bool empty = true;
+    char * binaryRowData = new char[(headingCount*sizeof(float))+2];
+    binaryRowData[0]='\r';
 
     for (uint32_t i=0; i<headingCount;i++)
     {
-        //add binary data from 32 bit float in rowData[i].value to row
-        char bytes[4];
-        memcpy(bytes,&(rowData[i].value),sizeof(float));
-        for(int j=0;j<4;j++){
-            row=row+ManagedString(bytes[j]);
-        }
-         
-        if(!std::isnan(rowData[i].value)){
-            empty = false;
-        }
-
-        if (i + 1 != headingCount)
-            row = row + sep;
+        float val = rowData[i].value;
+        memcpy(binaryRowData+1+(i*sizeof(float)),&val,sizeof(float));
     }
-    row = row + "\n";
+    binaryRowData[(headingCount*sizeof(float))+1]='\0';
 
-    if (!empty)
-        _logString(row);
+    _logString(binaryRowData,(headingCount*sizeof(float))+1);
 
     status &= ~MICROBIT_LOG_STATUS_ROW_STARTED;
 
@@ -706,6 +698,21 @@ ManagedString MicroBitLog::cleanBuffer(const char *s, int len, bool removeSepara
 /**
  * Inject the given row into the log as text, ignoring key/value pairs.
  * @param s the string to inject.
+ * @param strLen the length of the string
+ */
+int MicroBitLog::logString(const char *s, uint32_t strLength)
+{
+    int r;
+
+    mutex.wait();
+    r = _logString(s,strLength);
+    mutex.notify();
+
+    return r;
+}
+/**
+ * Inject the given row into the log as text, ignoring key/value pairs.
+ * @param s the string to inject.
  */
 int MicroBitLog::logString(const char *s)
 {
@@ -718,16 +725,26 @@ int MicroBitLog::logString(const char *s)
     return r;
 }
 
+
 /**
  * Inject the given row into the log as text, ignoring key/value pairs.
  * @param s the string to inject.
  */
 int MicroBitLog::_logString(const char *s)
+{
+    return _logString(s,strlen(s));
+}
+
+/**
+ * Inject the given row into the log as text, ignoring key/value pairs.
+ * @param s the string to inject.
+ */
+int MicroBitLog::_logString(const char *s,uint32_t strLength)
 {  
     init();
 
     uint32_t oldDataEnd = dataEnd;
-    uint32_t l = strlen(s);
+    uint32_t l = strLength;
     const char *data = s;
 
     // If this is the first log entry written, ensure that the file visibility is activated.
@@ -877,7 +894,7 @@ void MicroBitLog::addHeading(ManagedString key, float value, bool head)
         newRowData[i+columnShift].key = rowData[i].key;
         newRowData[i+columnShift].value = rowData[i].value;
         rowData[i].key = ManagedString::EmptyString;
-        rowData[i].value = NAN;
+        rowData[i].value = -1;
     }   
     
     if (rowData)
@@ -1149,32 +1166,7 @@ int MicroBitLog::_readSource( uint8_t *&data, uint32_t &index, uint32_t &len, ui
 */
 uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
 {
-    return 15;
-    constexpr uint8_t rowSeparator = 10; // newline char
-    uint32_t rowCount = 0;
-
-    uint32_t end = dataStart;
-    bool startRowFound = (fromRowIndex == 0) ? true : false;
-
-    // Read read until we see a 0xFF character (unused memory)
-    uint8_t c = 0;
-    while(c != 0xff)
-    { 
-        cache.read(end, &c, 1);
-        if (c == rowSeparator) {
-            rowCount++;
-            if (!startRowFound && fromRowIndex == rowCount) {
-                startRowFound = true;
-                rowCount = 0;
-            }
-        }
-        end++;
-    }
-
-    // Will be the case if fromRowIndex is beyond the number of rows:
-    if (!startRowFound)
-        return 0;
-    return rowCount;
+    return 0;
 }
 
 /**
@@ -1185,51 +1177,7 @@ uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
 */
 ManagedString MicroBitLog::getRows(uint32_t fromRowIndex, int nRows)
 {
-    if (fromRowIndex >= dataEnd || nRows <= 0)
-        return ManagedString("", 0);
-
-    constexpr uint8_t rowSeparator = 10; // newline char in asci
-    const uint32_t rowSeparatorTargetCount = fromRowIndex + nRows;
-
-    uint32_t startOfRowN = dataStart;
-    uint32_t endOfDataChunk = dataEnd;
-    
-    uint32_t end = dataStart;
-    uint32_t rowSeparatorCount = 0;
-    bool startRowFound = (fromRowIndex == 0) ? true : false;
-    
-    // Read until we see a 0xFF character (unused memory)
-    uint8_t c = 0;
-    while(c != 0xff)
-    {
-        cache.read(end, &c, 1);
-
-        if (c == rowSeparator) {
-            rowSeparatorCount++;
-            if (!startRowFound && rowSeparatorCount == fromRowIndex) 
-            {
-                startRowFound = true;
-                startOfRowN = end + 1;
-            }
-
-            else if (rowSeparatorCount == rowSeparatorTargetCount) 
-            {
-                endOfDataChunk = end;
-                break;
-            }
-        }
-
-        end++;
-    }
-
-    // fromRowIndex was beyond the datalogger:
-    if (!startRowFound)
-        return ManagedString("", 0);
-
-    const int dataLength = endOfDataChunk - startOfRowN;
-    char rows[dataLength];
-    cache.read(startOfRowN, rows, dataLength);
-    return ManagedString(rows, dataLength);
+    return ManagedString("", 0);
 }
 
 /**

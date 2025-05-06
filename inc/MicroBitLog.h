@@ -325,6 +325,8 @@ namespace codal
          */
         int endRow();
 
+
+        int logString(const char *s,uint32_t strLength);
         /**
          * Inject the given row into the log as text, ignoring key/value pairs.
          * @param s the string to inject.
@@ -395,6 +397,7 @@ namespace codal
         int _beginRow();
         int _endRow();
         int _logData(ManagedString key, float value);
+        int _logString(const char *s,uint32_t strLen);
         int _logString(const char *s);
         int _logString(ManagedString s);
 
