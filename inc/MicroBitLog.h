@@ -128,6 +128,8 @@ DEALINGS IN THE SOFTWARE.
 
 
 #define MICROBIT_LOG_EVT_LOG_FULL           1
+#define MICROBIT_LOG_EVT_NEW_ROW           2
+#define MICROBIT_LOG_EVT_HEADERS_CHANGED           3
 
 namespace codal
 {
