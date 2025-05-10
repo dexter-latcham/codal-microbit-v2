@@ -221,8 +221,10 @@ namespace codal
         bool                            timeStampChanged;   // Flag to indicate if a timestamp format has changed.
 
         struct ColumnEntry*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
+        float*  lastRow;
         struct MicroBitLogMetaData      metaData;           // Snapshot of the metadata held in flash storage.
         TimeStampFormat                 timeStampFormat;    // The format of timestamp to log on each row.
+        int32_t numberOfRows;
         ManagedString                   timeStampHeading;   // The title of the timestamp column, including units.
 
         const static uint8_t            header[2048];       // static header to prepend to FS in physical storage.
@@ -260,6 +262,7 @@ namespace codal
          * @param visible true to make the file visible, false otherwise.
          */
         void setVisibility(bool visible);
+        void checkNumberOfRows();
 
         /**
          * Clears the current log, including any previously defined keys.
@@ -372,6 +375,13 @@ namespace codal
         */
         uint32_t getNumberOfRows(uint32_t fromRowIndex = 0);
 
+        uint32_t getNumberOfHeaders();
+
+
+
+        uint32_t getLastRowFloats(float*returnArray,uint32_t returnArrayLength);
+
+        uint32_t getRowFloats(uint32_t getRowNumber, float*returnArray,uint32_t returnArrayLength);
         /**
         * Get n rows worth of logged data as a ManagedString.
         * @param fromRowIndex 0-based index of starting row.
@@ -380,6 +390,7 @@ namespace codal
         */
         ManagedString getRows(uint32_t fromRowIndex, int nRows);
 
+        ManagedString getHeaders();
     private:
 
         /**

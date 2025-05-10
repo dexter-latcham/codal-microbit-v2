@@ -70,7 +70,9 @@ MicroBitLog::MicroBitLog(MicroBitUSBFlashManager &flash, MicroBitPowerManager &p
     this->headingsChanged = false;
     this->timeStampChanged = false;
     this->rowData = NULL;
+    this->lastRow=NULL;
     this->timeStampFormat = TimeStampFormat::None;
+    this->numberOfRows=-1;
 }
 
 /**
@@ -169,6 +171,7 @@ void MicroBitLog::init()
 
             // Allocate a RAM buffer to hold key/value pairs matching those defined
             rowData = (ColumnEntry *) malloc(sizeof(ColumnEntry) * headingCount);
+            lastRow = (float*) malloc(sizeof(float)*headingCount);
 
             // Populate each entry.
             int i=0;
@@ -185,6 +188,7 @@ void MicroBitLog::init()
 
         // We may be full here, but this is still a valid state.
         status |= MICROBIT_LOG_STATUS_INITIALIZED;
+        checkNumberOfRows();
         return;
     }
     else
@@ -265,11 +269,16 @@ void MicroBitLog::_clear(bool fullErase)
     headingStart = 0;
     headingCount = 0;
     headingLength = 0;
+    numberOfRows=0;
 
     if (rowData)
     {
         free(rowData);
         rowData = NULL;
+    }
+    if(lastRow){
+        free(lastRow);
+        lastRow=NULL;
     }
 
     // Erase block associated with the FULL indicator. We don't perform a pag eerase here to reduce flash wear.
@@ -642,7 +651,8 @@ int MicroBitLog::_endRow()
         headingsChanged = false;
     }
 
-    char * binaryRowData = new char[(headingCount*sizeof(float))+2];
+    int floatBytes=headingCount*sizeof(float);
+    char * binaryRowData = new char[floatBytes+2];
     binaryRowData[0]='\r';
 
     for (uint32_t i=0; i<headingCount;i++)
@@ -650,7 +660,10 @@ int MicroBitLog::_endRow()
         float val = rowData[i].value;
         memcpy(binaryRowData+1+(i*sizeof(float)),&val,sizeof(float));
     }
-    binaryRowData[(headingCount*sizeof(float))+1]='\0';
+    binaryRowData[floatBytes+1]='\0';
+
+    //save the floats to the prev row list
+    memcpy(lastRow,binaryRowData+1,floatBytes);
 
     _logString(binaryRowData,(headingCount*sizeof(float))+1);
 
@@ -893,6 +906,7 @@ void MicroBitLog::addHeading(ManagedString key, float value, bool head)
     int columnShift = head ? 1 : 0;
     int newColumn = head ? 0 : headingCount;
 
+
     for (uint32_t i=0; i<headingCount; i++)
     {
         new (&newRowData[i+columnShift]) ColumnEntry;
@@ -901,9 +915,17 @@ void MicroBitLog::addHeading(ManagedString key, float value, bool head)
         rowData[i].key = ManagedString::EmptyString;
         rowData[i].value = -1;
     }   
-    
+
+
     if (rowData)
         free(rowData);
+
+    float* newLastRow = (float*) malloc(sizeof(float)*(headingCount+1));
+    memcpy(newLastRow,lastRow,sizeof(float)*headingCount);
+    if(lastRow){
+        free(lastRow);
+    }
+    lastRow = newLastRow;
 
     new (&newRowData[newColumn]) ColumnEntry;
     newRowData[newColumn].key = key;
@@ -911,6 +933,7 @@ void MicroBitLog::addHeading(ManagedString key, float value, bool head)
     headingCount++;
 
     rowData = newRowData;
+
     headingsChanged = true;
     Event(MICROBIT_ID_LOG,MICROBIT_LOG_EVT_HEADERS_CHANGED);
 }
@@ -1165,14 +1188,163 @@ int MicroBitLog::_readSource( uint8_t *&data, uint32_t &index, uint32_t &len, ui
     return r;
 }
 
+
+uint32_t MicroBitLog::getNumberOfHeaders()
+{
+    return headingCount;
+}
 /**
 * Get the number of rows (including the header) in the datalogger.
 * @param fromRowIndex 0-based index of starting row: bumped up to 0 if negative.
 * @return number of rows + header.
 */
-uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
+
+uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex){
+    return numberOfRows;
+}
+
+void MicroBitLog::checkNumberOfRows()
 {
-    return 0;
+    //rows begin with \r
+    //headings begin with \n
+    //we only count headings here
+    constexpr uint8_t rowSeparator = 10; // newline char
+    constexpr uint8_t carrigeReturn = 13; // newline char
+    constexpr uint8_t comma = 44;
+
+    uint32_t rowCount = 0;
+
+    uint32_t end = dataStart;
+
+    // Read read until we see a 0xFF character (unused memory)
+    uint8_t c = 0;
+    uint8_t currentHeaderCount=1;
+    while(c!=rowSeparator && c!= carrigeReturn && c!=0xff){
+        cache.read(end, &c, 1);
+        if(c==comma){
+            currentHeaderCount++;
+        }
+        end++;
+    }
+    while(c != 0xff)
+    { 
+        if(c==rowSeparator){//heading row begining
+            cache.read(end, &c, 1);
+            end++;
+            uint8_t newHeadings=1;
+            while(c!=rowSeparator && c!= carrigeReturn){
+                cache.read(end, &c, 1);
+                end++;
+                if(c==comma){
+                    newHeadings++;
+                }
+            }
+            currentHeaderCount=newHeadings;
+        }else if(c==carrigeReturn){//data row begining
+            for(int i=0;i<(sizeof(float)*currentHeaderCount);i++){
+                cache.read(end, &c, 1);
+                end++;
+            }
+            cache.read(end, &c, 1);
+            end++;
+            rowCount++;
+        }else{
+            cache.read(end, &c, 1);
+            end++;
+        }
+    }
+    numberOfRows=rowCount;
+}
+
+ManagedString MicroBitLog::getHeaders(){
+    mutex.wait();
+    init();
+    ManagedString result;
+    for(uint32_t i=0;i<headingCount;i++){
+        result = result+rowData[i].key;
+        if(i<headingCount-1){
+            result=result+",";
+        }
+    }
+    mutex.notify();
+    return result;
+}
+
+
+uint32_t MicroBitLog::getLastRowFloats(float *returnArray, uint32_t returnArrayCount){
+    if(returnArray==NULL){
+        return -1;
+    }
+    int count = returnArrayCount;
+    if(returnArrayCount<headingCount){
+        count=headingCount;
+    }
+    memcpy(returnArray,lastRow,count*sizeof(float));
+    return count;
+}
+
+uint32_t MicroBitLog::getRowFloats(uint32_t getRowNumber, float *returnArray, uint32_t returnArrayLength)
+{
+    if(returnArray==NULL){
+        return -1;
+    }
+    //rows begin with \r
+    //headings begin with \n
+    //we only count headings here
+    constexpr uint8_t rowSeparator = 10; // newline char
+    constexpr uint8_t carrigeReturn = 13; // newline char
+    constexpr uint8_t comma = 44;
+
+    uint32_t rowCount = 0;
+    uint32_t end = dataStart;
+
+    // Read read until we see a 0xFF character (unused memory)
+    uint8_t c = 0;
+    uint8_t currentHeaderCount=1;
+    //first skip the header row
+    while(c!=rowSeparator && c!= carrigeReturn && c!=0xff){
+        cache.read(end, &c, 1);
+        if(c==comma){
+            currentHeaderCount++;
+        }
+        end++;
+    }
+
+    while(c != 0xff){ 
+        if(c==rowSeparator){//heading row begining
+            cache.read(end, &c, 1);
+            end++;
+            uint8_t newHeadings=1;
+            while(c!=rowSeparator && c!= carrigeReturn){
+                cache.read(end, &c, 1);
+                end++;
+                if(c==comma){
+                    newHeadings++;
+                }
+            }
+            currentHeaderCount=newHeadings;
+        }else if(c==carrigeReturn){//data row begining
+            if(rowCount==getRowNumber){
+                if(currentHeaderCount<=returnArrayLength){
+                    int readLength=sizeof(float)*currentHeaderCount;
+                    cache.read(end,returnArray,readLength);
+                    return currentHeaderCount;
+                }else{
+                    return -1;
+                }
+            }
+            for(int i=0;i<(sizeof(float)*currentHeaderCount);i++){
+                cache.read(end, &c, 1);
+                end++;
+            }
+            cache.read(end, &c, 1);
+            end++;
+            rowCount++;
+        }else{
+            return -1;
+        }
+    }
+    return -1;
 }
 
 /**

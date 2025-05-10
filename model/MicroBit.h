@@ -72,10 +72,12 @@ DEALINGS IN THE SOFTWARE.
 
 #include "MESEvents.h"
 
-#if CONFIG_ENABLED(DEVICE_BLE)
+#if !CONFIG_ENABLED(DEVICE_BLE)
+#else
 #include "MicroBitBLEManager.h"
 #include "MicroBitLEDService.h"
 #include "MicroBitAccelerometerService.h"
+#include "CustomBtService.h"
 #include "MicroBitMagnetometerService.h"
 #include "MicroBitButtonService.h"
 #include "MicroBitIOPinService.h"
