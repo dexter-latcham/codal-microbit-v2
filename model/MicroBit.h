@@ -63,6 +63,7 @@ DEALINGS IN THE SOFTWARE.
 #include "NRF52FlashManager.h"
 #include "MicroBitUSBFlashManager.h"
 #include "MicroBitLog.h"
+#include "MicroBitFastLog.h"
 #include "MicroBitAudio.h"
 #include "StreamNormalizer.h"
 #include "LevelDetector.h"

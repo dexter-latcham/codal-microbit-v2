@@ -584,37 +584,10 @@ int MicroBitLog::_endRow()
     // Insert timestamp field if requested.
     if (validData && timeStampFormat != TimeStampFormat::None)
     {
-        // // handle 32 bit overflow and fractional components of timestamp
-        // CODAL_TIMESTAMP t = system_timer_current_time() / (CODAL_TIMESTAMP)timeStampFormat;
-        // int billions = t / (CODAL_TIMESTAMP) 1000000000;
-        // int units = t % (CODAL_TIMESTAMP) 1000000000;
-        // int fraction = 0;
-
-        // if ((int)timeStampFormat > 1)
-        // {
-        //     fraction = units % 100;
-        //     units = units / 100;
-        //     billions = billions / 100;
-        // }
-
-        // ManagedString u(units);
-        // ManagedString f(fraction);
-        // ManagedString s;
-        // f = padString(f, 2);
-
-        // if (billions)
-        // {
-        //     s = s + billions;
-        //     u = padString(u, 9);
-        // }
-
-        // s = s + u;
-
-        // // Add two decimal places for anything other than milliseconds.
-        // if ((int)timeStampFormat > 1)
-        //     s = s + "." + f;
-
-        _logData(timeStampHeading, (float)1);
+        CODAL_TIMESTAMP t = system_timer_current_time() / (CODAL_TIMESTAMP)timeStampFormat;
+        float floatTime = (float)t;
+        floatTime = floatTime/100.0f;
+        _logData(timeStampHeading, floatTime);
     }
 
     // If new columns have been added since the last row, update persistent storage accordingly.
@@ -665,6 +638,7 @@ int MicroBitLog::_endRow()
     //save the floats to the prev row list
     memcpy(lastRow,binaryRowData+1,floatBytes);
 
+    numberOfRows++;
     _logString(binaryRowData,(headingCount*sizeof(float))+1);
 
     status &= ~MICROBIT_LOG_STATUS_ROW_STARTED;

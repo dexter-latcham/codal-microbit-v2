@@ -33,6 +33,7 @@ protected:
     void onDataWritten(const microbit_ble_evt_write_t *params);
 
 
+    bool enableLiveRowTransmission;
     uint16_t rowCount;
     uint16_t headerCount;
     uint16_t requestedHeader;

@@ -20,6 +20,7 @@ const uint16_t MicroBitLogService::charUUID[ mbbs_cIdxCOUNT] = {
 #include "MicroBitLog.h"
 
 MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_log) {
+    enableLiveRowTransmission=false;
     headers[0]='\0';
     rowCount=0;
     headerCount = 0;
@@ -35,7 +36,7 @@ MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_l
 
 
     CreateCharacteristic(mbbs_cIdxGETHEADER, charUUID[mbbs_cIdxGETHEADER],
-                         (uint8_t *)&headers, sizeof(headers), sizeof(headers),
+                         (uint8_t *)&headers, sizeof(headers), MICROBIT_LOGBT_MAX_HEADER_LENGTH,
                          microbit_propREAD | microbit_propWRITE|microbit_propNOTIFY);
 
     CreateCharacteristic(mbbs_cIdxHEADERCOUNT, charUUID[mbbs_cIdxHEADERCOUNT],
@@ -44,11 +45,11 @@ MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_l
 
     CreateCharacteristic(mbbs_cIdxGETROW, charUUID[mbbs_cIdxGETROW],
                          (uint8_t *)rowBuffer, 0, sizeof(float)*MICROBIT_LOGBT_MAX_SIZE,
-                         microbit_propREAD | microbit_propNOTIFY);
+                         microbit_propREAD | microbit_propNOTIFY|microbit_propWRITE);
 
     CreateCharacteristic(mbbs_cIdxNEWROWLOGGED, charUUID[mbbs_cIdxNEWROWLOGGED],
                          (uint8_t *)newRowBuffer, 0, sizeof(float)*MICROBIT_LOGBT_MAX_SIZE,
-                         microbit_propREAD | microbit_propNOTIFY);
+                         microbit_propREAD | microbit_propNOTIFY | microbit_propWRITE);
     if (getConnected())
         listen(true);
 }
@@ -61,8 +62,10 @@ void MicroBitLogService::listen(bool yes) {
             rowCount = log.getNumberOfRows(0);
             headerCount = log.getNumberOfHeaders();
             EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::incrementLogRowCount,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
-            EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::newRowLogged,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
             EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_HEADERS_CHANGED, this, &MicroBitLogService::logHeaderUpdate);
+            if(enableLiveRowTransmission){
+                EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::newRowLogged,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
+            }
         }
         else
         {
@@ -87,7 +90,14 @@ void MicroBitLogService::onDisconnect(const microbit_ble_evt_t *p_ble_evt) {
   */
 void MicroBitLogService::onDataWritten(const microbit_ble_evt_write_t *params)
 {
-    if (params->handle == valueHandle(mbbs_cIdxGETHEADER) && params->len >= sizeof(uint16_t)){
+    if (params->handle == valueHandle(mbbs_cIdxNEWROWLOGGED)){
+        uint16_t sentData;
+        memcpy(&sentData,params->data,sizeof(sentData));
+        if(sentData!=0){
+            enableLiveRowTransmission=true;
+            EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::newRowLogged,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
+        }
+    }else if (params->handle == valueHandle(mbbs_cIdxGETHEADER) && params->len >= sizeof(uint16_t)){
         uint16_t requestedHeader;
         memcpy(&requestedHeader,params->data,sizeof(requestedHeader));
         ManagedString headersNew = log.getHeaders();
@@ -110,6 +120,16 @@ void MicroBitLogService::onDataWritten(const microbit_ble_evt_write_t *params)
             headers[length]='\0';
         }
         notifyChrValue(mbbs_cIdxGETHEADER, (uint8_t*)&headers, length);
+    }else if (params->handle == valueHandle(mbbs_cIdxGETROW) && params->len >= sizeof(uint16_t)){
+        uint16_t requestedRow;
+        memcpy(&requestedRow,params->data,sizeof(requestedRow));
+        int getRowReturnVal = log.getRowFloats(requestedRow,rowBuffer,MICROBIT_LOGBT_MAX_SIZE);
+        if(getRowReturnVal>0){
+            if(getRowReturnVal<MICROBIT_LOGBT_MAX_SIZE){
+                rowBuffer[getRowReturnVal]=0x7fc00000;
+            }
+            notifyChrValue(mbbs_cIdxGETROW, (uint8_t*)rowBuffer, sizeof(float)*(getRowReturnVal+1));
+        }
     }
 }
 
