@@ -1,47 +1,69 @@
-#ifndef MICROBIT_FAST_LOG_H
-#define MICROBIT_FAST_LOG_H
+#ifndef MICROBIT_FASTLOG_H
+#define MICROBIT_FASTLOG_H
 
-#include "CodalConfig.h"
-#include "MicroBitLog.h"
 
-namespace codal {
+#define MICROBIT_FASTLOG_DEFAULT_COLUMNS 3
 
-class MicroBitFastLog {
-private:
-    int columnCount;     // Number of columns per row
-    int head;            // Index of next insert position (circular buffer)
-    int count;           // Current number of rows stored
-    int maxRows;         // Maximum rows that fit in allocated memory
-    int status;          // 0 = uninitialized, 1 = initialized
-    float* data;         // Pointer to raw data block
+#define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
+#define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
 
-public:
-    MicroBitFastLog(int numberColumns);
+#define MICROBIT_FASTLOG_EVT_LOG_FULL           1
+#define MICROBIT_FASTLOG_EVT_NEW_ROW           2
+#define MICROBIT_FASTLOG_EVT_HEADERS_CHANGED           3
 
-    /**
-     * Initializes the data buffer.
-     */
-    void init();
+#include "stdint.h"
+#include "MicroBitCircularBuffer.h"
 
-    /**
-     * Logs a new row of data. Overwrites oldest row if buffer is full.
-     */
-    void logRow(float* dataArray);
-
-    /**
-     * Retrieves a row of data by index.
-     * @param returnArray A pre-allocated array to receive the row.
-     * @param rowNumber Index of the row to retrieve (0 = oldest).
-     */
-    void getRow(float* returnArray, int rowNumber);
-
-    /**
-     * Gets the number of rows currently stored.
-     */
-    int getRowCount();
-    void writeToDisk(codal::MicroBitLog &log);
+#ifndef runningLocal
+#include "ManagedString.h"
+#include "stdint.h"
+namespace codal
+{
+#endif
+class LogColumnEntry
+{
+    public:
+    ManagedString key;
+    uint8_t type;
+    union value{
+        float floatVal;
+        int32_t int32Val;
+        uint16_t int16Val;
+    }value;
 };
 
-} // namespace codal
+class FastLog{
+    uint32_t status;
+    int columnCount;
+    struct LogColumnEntry* rowData;
+    CircBuffer *logger;
 
-#endif // MICROBIT_FAST_LOG_H
+
+    public:
+    FastLog();
+
+    void beginRow();
+    void endRow();
+
+    void logData(ManagedString key, float value);
+    void logData(ManagedString key, uint16_t value);
+    void logData(ManagedString key, int32_t value);
+    void saveLog();
+
+    ManagedString getHeaders();
+
+    ManagedString getHeaders(int index);
+
+    ManagedString getRow(int row);
+    uint16_t getNumberOfRows();
+
+    uint16_t getNumberOfHeaders();
+private:
+        void init();
+};
+
+
+#ifndef runningLocal
+}
+#endif
+#endif

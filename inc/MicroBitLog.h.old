@@ -128,8 +128,8 @@ DEALINGS IN THE SOFTWARE.
 
 
 #define MICROBIT_LOG_EVT_LOG_FULL           1
-#define MICROBIT_LOG_EVT_NEW_ROW            2
-#define MICROBIT_LOG_EVT_NEW_HEADER           3
+#define MICROBIT_LOG_EVT_NEW_ROW           2
+#define MICROBIT_LOG_EVT_HEADERS_CHANGED           3
 
 namespace codal
 {
@@ -145,7 +145,7 @@ namespace codal
     {
         public:
         ManagedString key;
-        ManagedString value;
+        float value;
     };
 
     
@@ -221,8 +221,10 @@ namespace codal
         bool                            timeStampChanged;   // Flag to indicate if a timestamp format has changed.
 
         struct ColumnEntry*             rowData;            // Collection of key/value pairs. Used to accumulate each data row.
+        float*  lastRow;
         struct MicroBitLogMetaData      metaData;           // Snapshot of the metadata held in flash storage.
         TimeStampFormat                 timeStampFormat;    // The format of timestamp to log on each row.
+        int32_t numberOfRows;
         ManagedString                   timeStampHeading;   // The title of the timestamp column, including units.
 
         const static uint8_t            header[2048];       // static header to prepend to FS in physical storage.
@@ -260,6 +262,7 @@ namespace codal
          * @param visible true to make the file visible, false otherwise.
          */
         void setVisibility(bool visible);
+        void checkNumberOfRows();
 
         /**
          * Clears the current log, including any previously defined keys.
@@ -310,7 +313,7 @@ namespace codal
          * 
          * @return DEVICE_OK on success.
          */
-        int logData(const char *key, const char *value);
+        int logData(const char *key, float value);
 
         /**
          * Populates the current row with the given key/value pair.
@@ -319,7 +322,7 @@ namespace codal
          *
          * @return DEVICE_OK on success.
          */
-        int logData(ManagedString key, ManagedString value);
+        int logData(ManagedString key, float value);
 
         /**
          * Complete a row in the log, and pushes to persistent storage.
@@ -327,6 +330,8 @@ namespace codal
          */
         int endRow();
 
+
+        int logString(const char *s,uint32_t strLength);
         /**
          * Inject the given row into the log as text, ignoring key/value pairs.
          * @param s the string to inject.
@@ -370,6 +375,13 @@ namespace codal
         */
         uint32_t getNumberOfRows(uint32_t fromRowIndex = 0);
 
+        uint32_t getNumberOfHeaders();
+
+
+
+        uint32_t getLastRowFloats(float*returnArray,uint32_t returnArrayLength);
+
+        uint32_t getRowFloats(uint32_t getRowNumber, float*returnArray,uint32_t returnArrayLength);
         /**
         * Get n rows worth of logged data as a ManagedString.
         * @param fromRowIndex 0-based index of starting row.
@@ -378,26 +390,7 @@ namespace codal
         */
         ManagedString getRows(uint32_t fromRowIndex, int nRows);
 
-
-
-        /**
-        * Get a single row at the given index
-        * -1 returns the last row, all other negatives are invalid
-        * @param rowIndex 0-based index of row.
-        * @return ManagedString values in the row separated by a comma
-        */
-        ManagedString getRow(int rowIndex);
-
-        /**
-         * return the number of currently set headers
-         */
-        uint32_t getNumberOfHeaders();
-
-        /**
-         * return the header at index headerNo
-         * empty string if invalid index
-         */
-        ManagedString getHeader(uint16_t headerNo);
+        ManagedString getHeaders();
     private:
 
         /**
@@ -416,7 +409,8 @@ namespace codal
         void _setTimeStamp(TimeStampFormat format);
         int _beginRow();
         int _endRow();
-        int _logData(ManagedString key, ManagedString value);
+        int _logData(ManagedString key, float value);
+        int _logString(const char *s,uint32_t strLen);
         int _logString(const char *s);
         int _logString(ManagedString s);
 
@@ -444,7 +438,7 @@ namespace codal
          * @param value the initial value to add, or ManagedString::EmptyString
          * @param head true to add the given field at the front of the list, false to add at the end.
          */
-        void addHeading(ManagedString key, ManagedString value, bool head = false);
+        void addHeading(ManagedString key, float value, bool head = false);
 
         /**
          * Clean the given buffer of invalid LogFS symbols ("-->" and optionally ",\t\n")

@@ -6,13 +6,15 @@
 #if !CONFIG_ENABLED(DEVICE_BLE)
 #else
 
-#include "MicroBitLog.h"
 #include "MicroBitBLEManager.h"
 #include "MicroBitBLEService.h"
 #include "MicroBitLog.h"
 #include "EventModel.h"
-#define MICROBIT_LOGBT_MAX_SIZE 20
-#define MICROBIT_LOGBT_MAX_HEADER_LENGTH 20
+
+#include "MicroBitBLEManager.h"
+#include "MicroBitBLEService.h"
+#include "MicroBitSerial.h"
+
 
 class MicroBitLogService : public MicroBitBLEService
 {
@@ -32,14 +34,35 @@ protected:
     void logHeaderUpdate(MicroBitEvent e);
     void onDataWritten(const microbit_ble_evt_write_t *params);
 
+    void sendHeader(const uint8_t *header, int length);
+    bool sendNextHeader();
 
-    bool enableLiveRowTransmission;
+    void sendRow(const uint8_t *row, int length);
+    bool sendNextRow();
+    void onConfirmation( const microbit_ble_evt_hvc_t *params);
+
+
+    uint8_t SHBufferSize;
+    uint8_t* SHBuffer;
+    uint8_t SHBufferHead;
+    uint8_t SHBufferTail;
+    uint8_t SHBytesToSend;
+
+
+    uint8_t rowBuffSize;
+    uint8_t* rowBuff;
+    uint8_t rowBuffHead;
+    uint8_t rowBuffTail;
+    uint8_t rowBuffToSend;
+
+    // bool enableLiveRowTransmission;
     uint16_t rowCount;
     uint16_t headerCount;
     uint16_t requestedHeader;
-    char headers[MICROBIT_LOGBT_MAX_HEADER_LENGTH];
+
     float* rowBuffer;
     float* newRowBuffer;
+
     typedef enum mbbs_cIdx
     {
         mbbs_cIdxROWCOUNT,
