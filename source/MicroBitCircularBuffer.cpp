@@ -1,18 +1,8 @@
 #include "MicroBitCircularBuffer.h"
 #include "stdint.h"
 
-#ifndef runningLocal
-#include "MicroBit.h"
-#else
-#include "stdio.h"
-#include "string.h"
-#include "stdlib.h"
-#endif
 
-#ifndef runningLocal
-extern MicroBit uBit;
 using namespace codal;
-#endif
 
 CircBuffer::CircBuffer(int size) {
     this->maxByteSize=size;
@@ -124,6 +114,17 @@ uint8_t* CircBuffer::_getNextWriteLoc(TypeMeta* meta){
     return possibleNext;
 }
 
+
+void CircBuffer::logVal(int value) {
+    if(value >=0 && value < 65535){
+        return logVal((uint16_t) value);
+    }else if(value >= INT32_MIN && value <= INT32_MAX){
+        return logVal((int32_t) value);
+    }else{
+        return logVal((float) value);
+    }
+}
+
 void CircBuffer::logVal(uint16_t val) {
     init();
 
@@ -141,7 +142,7 @@ void CircBuffer::logVal(uint16_t val) {
         int16Meta->start=NULL;
         int16Meta->bytes=sizeof(uint16_t);
     }
-    logData(&int16Meta,(uint8_t*)&val);
+    _logData(&int16Meta,(uint8_t*)&val);
 }
 
 
@@ -158,7 +159,7 @@ void CircBuffer::logVal(int32_t val) {
         int32Meta->start=NULL;
         int32Meta->bytes=sizeof(int32_t);
     }
-    logData(&int32Meta,(uint8_t*)&val);
+    _logData(&int32Meta,(uint8_t*)&val);
 }
 void CircBuffer::logVal(float val) {
     init();
@@ -167,10 +168,10 @@ void CircBuffer::logVal(float val) {
         floatMeta->start=NULL;
         floatMeta->bytes=sizeof(float);
     }
-    logData(&floatMeta,(uint8_t*)&val);
+    _logData(&floatMeta,(uint8_t*)&val);
 }
 
-void CircBuffer::logData(TypeMeta ** metaPtr,uint8_t* data){
+void CircBuffer::_logData(TypeMeta ** metaPtr,uint8_t* data){
     init();
     TypeMeta* meta = *metaPtr;
     if(meta->start==NULL){
@@ -229,82 +230,21 @@ void CircBuffer::logData(TypeMeta ** metaPtr,uint8_t* data){
     meta->next=_getNextWriteLoc(meta);
 }
 
-#ifdef runningLocal
-void print16(const void* ptr) {
-    printf("16: %d\n",*(uint16_t*)ptr);
-}
-
-void print32(const void* ptr) {
-    printf("32: %d\n",*(int32_t*)ptr);
-}
-
-void printFloat(const void* ptr) {
-    printf("fl: %f\n",*(float*)ptr);
-}
-#else
 static ManagedString floatToStr(float num){
     int integerPart = (int)num;
-    int fractionPart = (int)((num-integerPart)*1000000.0f);
+    int fractionPart = (int)((num-integerPart)*100000.0f);
+
     ManagedString ret(integerPart);
     ManagedString zero = "0";
     if(fractionPart!=0){
         ManagedString fracPart(fractionPart);
-        while(fracPart.length()<6){
+        while(fracPart.length()<5){
             fracPart=zero+fracPart;
         }
         ret=ret+"."+fracPart;
     }
     return ret;
 }
-void print16(const void* ptr) {
-    uint16_t val = *(uint16_t*)ptr;
-    ManagedString toSend = ManagedString("16: ")+ManagedString(val)+ManagedString("\n");
-    uBit.serial.printf(toSend.toCharArray());
-}
-
-void print32(const void* ptr) {
-    int32_t val = *(int32_t*)ptr;
-    int intVal = (int)val;
-    ManagedString toSend = ManagedString("32: ")+ManagedString(intVal)+ManagedString("\n");
-    uBit.serial.printf(toSend.toCharArray());
-}
-
-void printFloat(const void* ptr) {
-    float val = *(float*)ptr;
-    ManagedString floatStr=floatToStr(val);
-    ManagedString toSend = ManagedString("fl: ")+floatStr+ManagedString("\n");
-    uBit.serial.printf(toSend.toCharArray());
-}
-#endif
-
-void CircBuffer::_printSection(TypeMeta* meta, PrintFunc func){
-    if(meta==NULL){
-        return;
-    }
-    uint8_t* from = meta->start;
-    uint8_t* to = meta->last;
-
-    uint8_t* current = from;
-    if(to < from){
-        current=from;
-        while(current+meta->bytes<=dataEnd){
-            func(current);
-            current+=meta->bytes;
-        }
-        current=dataStart;
-    }
-    while(current<=to){
-        func(current);
-        current+=meta->bytes;
-    }
-}
-
-void CircBuffer::print() {
-    _printSection(int16Meta,print16);
-    _printSection(int32Meta,print32);
-    _printSection(floatMeta,printFloat);
-}
-
 
 int CircBuffer::_countSection(TypeMeta*meta){
     if(meta==NULL){
@@ -331,38 +271,6 @@ int CircBuffer::_countSection(TypeMeta*meta){
 }
 
 
-void CircBuffer::_printElemIndex(TypeMeta* meta, int index,PrintFunc func){
-    if(meta==NULL){
-        return;
-    }
-    int count=0;
-
-    uint8_t* from = meta->start;
-    uint8_t* to = meta->last;
-
-    uint8_t* current = from;
-    if(to < from){
-        current=from;
-        while(current+meta->bytes<=dataEnd){
-            if(index==count){
-                func(current);
-                return;
-            }
-            current+=meta->bytes;
-            count+=1;
-        }
-        current=dataStart;
-    }
-    while(current<=to){
-        if(index==count){
-            func(current);
-            return;
-        }
-        count+=1;
-        current+=meta->bytes;
-    }
-}
-
 uint8_t* CircBuffer::_getElemIndex(TypeMeta* meta, int index){
     if(meta==NULL){
         return NULL;
@@ -371,7 +279,6 @@ uint8_t* CircBuffer::_getElemIndex(TypeMeta* meta, int index){
     uint8_t* to = meta->last;
 
     uint8_t* current = from;
-
     int count=0;
     if(index<0){
         current= to;
@@ -398,7 +305,6 @@ uint8_t* CircBuffer::_getElemIndex(TypeMeta* meta, int index){
         }
         return NULL;
     }
-
 
     if(to < from){
         current=from;
@@ -496,22 +402,106 @@ ManagedString CircBuffer::getElem(int index){
     return ManagedString::EmptyString;
 }
 
-void CircBuffer::printElem(int index){
-    int int16Entries = _countSection(int16Meta);
-    if(index < int16Entries){
-        return _printElemIndex(int16Meta,index,print16);
-    }
-    int int32Entries = _countSection(int32Meta);
-    if(index < (int32Entries+int16Entries)){
-        return _printElemIndex(int32Meta,index-int16Entries,print32);
-    }
-    int floatEntries = _countSection(floatMeta);
-    if(index < (int32Entries+int16Entries+floatEntries)){
-        return _printElemIndex(floatMeta,index-int16Entries-int32Entries,printFloat);
-    }
-}
 
-int CircBuffer::getRowCount(){
+int CircBuffer::getElementCount(){
     init();
     return _countSection(int16Meta)+_countSection(int32Meta)+_countSection(floatMeta);
 }
+
+
+// void CircBuffer::printElem(int index){
+//     int int16Entries = _countSection(int16Meta);
+//     if(index < int16Entries){
+//         return _printElemIndex(int16Meta,index,print16);
+//     }
+//     int int32Entries = _countSection(int32Meta);
+//     if(index < (int32Entries+int16Entries)){
+//         return _printElemIndex(int32Meta,index-int16Entries,print32);
+//     }
+//     int floatEntries = _countSection(floatMeta);
+//     if(index < (int32Entries+int16Entries+floatEntries)){
+//         return _printElemIndex(floatMeta,index-int16Entries-int32Entries,printFloat);
+//     }
+// }
+
+// void print16(const void* ptr) {
+//     uint16_t val = *(uint16_t*)ptr;
+//     ManagedString toSend = ManagedString("16: ")+ManagedString(val)+ManagedString("\n");
+//     uBit.serial.printf(toSend.toCharArray());
+// }
+
+// void print32(const void* ptr) {
+//     int32_t val = *(int32_t*)ptr;
+//     int intVal = (int)val;
+//     ManagedString toSend = ManagedString("32: ")+ManagedString(intVal)+ManagedString("\n");
+//     uBit.serial.printf(toSend.toCharArray());
+// }
+
+// void printFloat(const void* ptr) {
+//     float val = *(float*)ptr;
+//     ManagedString floatStr=floatToStr(val);
+//     ManagedString toSend = ManagedString("fl: ")+floatStr+ManagedString("\n");
+//     uBit.serial.printf(toSend.toCharArray());
+// }
+
+// void CircBuffer::_printSection(TypeMeta* meta, PrintFunc func){
+//     if(meta==NULL){
+//         return;
+//     }
+//     uint8_t* from = meta->start;
+//     uint8_t* to = meta->last;
+
+//     uint8_t* current = from;
+//     if(to < from){
+//         current=from;
+//         while(current+meta->bytes<=dataEnd){
+//             func(current);
+//             current+=meta->bytes;
+//         }
+//         current=dataStart;
+//     }
+//     while(current<=to){
+//         func(current);
+//         current+=meta->bytes;
+//     }
+// }
+
+// void CircBuffer::print() {
+//     _printSection(int16Meta,print16);
+//     _printSection(int32Meta,print32);
+//     _printSection(floatMeta,printFloat);
+// }
+
+
+// void CircBuffer::_printElemIndex(TypeMeta* meta, int index,PrintFunc func){
+//     if(meta==NULL){
+//         return;
+//     }
+//     int count=0;
+
+//     uint8_t* from = meta->start;
+//     uint8_t* to = meta->last;
+
+//     uint8_t* current = from;
+//     if(to < from){
+//         current=from;
+//         while(current+meta->bytes<=dataEnd){
+//             if(index==count){
+//                 func(current);
+//                 return;
+//             }
+//             current+=meta->bytes;
+//             count+=1;
+//         }
+//         current=dataStart;
+//     }
+//     while(current<=to){
+//         if(index==count){
+//             func(current);
+//             return;
+//         }
+//         count+=1;
+//         current+=meta->bytes;
+//     }
+// }
+

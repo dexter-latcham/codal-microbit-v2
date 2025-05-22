@@ -5,16 +5,11 @@
 #define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
 
-// #define runningLocal 
 
 #include "stdint.h"
-
-#ifndef runningLocal
 #include "ManagedString.h"
-#include "stdint.h"
 namespace codal
 {
-#endif
 
 typedef struct {
     uint8_t* start;
@@ -42,42 +37,27 @@ public:
      */
     void init();
 
-    /**
-     * Logs a new row of data. Overwrites oldest row if buffer is full.
-     */
-    void logVal(float value);
+
+    void logVal(int value);
 
     void logVal(uint16_t value);
 
     void logVal(int32_t value);
 
-    void logData(TypeMeta ** meta,uint8_t* data);
+    void logVal(float value);
 
+    int getElementCount();
+    ManagedString getElem(int index);
 
-
-    typedef void (*PrintFunc)(const void*);
-    void _printSection(TypeMeta* meta,PrintFunc func);
-
-
-
-    uint8_t* _getElemIndex(TypeMeta* meta,int index);
-    void _printElemIndex(TypeMeta* meta,int index,PrintFunc func);
-
+private:
     uint8_t* _getNextWriteLoc(TypeMeta* meta);
-
     void _clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to);
-
+    void _logData(TypeMeta ** meta,uint8_t* data);
 
     int _countSection(TypeMeta*meta);
-    int getRowCount();
-    void print();
 
-    void printElem(int index);
-
-    ManagedString getElem(int index);
+    uint8_t* _getElemIndex(TypeMeta* meta,int index);
 };
 
-#ifndef runningLocal
 }
-#endif
 #endif

@@ -11,10 +11,33 @@
 #include "MicroBitLog.h"
 #include "EventModel.h"
 
-#include "MicroBitBLEManager.h"
-#include "MicroBitBLEService.h"
-#include "MicroBitSerial.h"
+#include "string.h"
+#include "stdint.h"
 
+#define MICROBIT_FASTBT_MAX_BYTES 20
+class BluetoothSendBuffer {
+public:
+    uint8_t *buffer;
+    uint8_t* txBuffer;
+
+    int bufferSize;
+    int head;
+    int tail;
+    int bytesToSend;
+    int characteristicId;
+
+    BluetoothSendBuffer(int size,int charId){
+        characteristicId=charId;
+        bufferSize=size;
+        int allocSize = bufferSize + MICROBIT_FASTBT_MAX_BYTES;
+        buffer = (uint8_t *)malloc(allocSize);
+        memclr(buffer, allocSize);
+        txBuffer=buffer+bufferSize;
+        head = 0;
+        tail=0;
+        bytesToSend = 0;
+    }
+};
 
 class MicroBitLogService : public MicroBitBLEService
 {
@@ -34,26 +57,11 @@ protected:
     void logHeaderUpdate(MicroBitEvent e);
     void onDataWritten(const microbit_ble_evt_write_t *params);
 
-    void sendHeader(const uint8_t *header, int length);
-    bool sendNextHeader();
-
-    void sendRow(const uint8_t *row, int length);
-    bool sendNextRow();
     void onConfirmation( const microbit_ble_evt_hvc_t *params);
 
 
-    uint8_t SHBufferSize;
-    uint8_t* SHBuffer;
-    uint8_t SHBufferHead;
-    uint8_t SHBufferTail;
-    uint8_t SHBytesToSend;
-
-
-    uint8_t rowBuffSize;
-    uint8_t* rowBuff;
-    uint8_t rowBuffHead;
-    uint8_t rowBuffTail;
-    uint8_t rowBuffToSend;
+    BluetoothSendBuffer *newRowBuffer;
+    BluetoothSendBuffer *getHeaderBuffer;
 
     // bool enableLiveRowTransmission;
     uint16_t rowCount;
@@ -61,7 +69,6 @@ protected:
     uint16_t requestedHeader;
 
     float* rowBuffer;
-    float* newRowBuffer;
 
     typedef enum mbbs_cIdx
     {
@@ -79,6 +86,12 @@ protected:
 
     int              characteristicCount()          { return mbbs_cIdxCOUNT; };
     MicroBitBLEChar *characteristicPtr( int idx)    { return &chars[ idx]; };
+
+    void _advanceBufferTail(BluetoothSendBuffer* buf);
+
+    void _sendToBuffer(BluetoothSendBuffer* buf, const uint8_t* data, int len);
+
+    void _sendNextFromBuffer(BluetoothSendBuffer* buf);
 };
 
 #endif

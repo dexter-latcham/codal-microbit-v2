@@ -7,24 +7,29 @@
 #define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
 
-#define MICROBIT_FASTLOG_EVT_LOG_FULL           1
-#define MICROBIT_FASTLOG_EVT_NEW_ROW           2
-#define MICROBIT_FASTLOG_EVT_HEADERS_CHANGED           3
-
 #include "stdint.h"
 #include "MicroBitCircularBuffer.h"
-
-#ifndef runningLocal
+#include "MicroBitLog.h"
+#include "MicroBitLog.h"
 #include "ManagedString.h"
 #include "stdint.h"
+
+
 namespace codal
 {
-#endif
+
+enum ValueType {
+    TYPE_NONE=0,
+    TYPE_UINT16 = 1,
+    TYPE_INT32 =2,
+    TYPE_FLOAT=3
+};
+
 class LogColumnEntry
 {
     public:
     ManagedString key;
-    uint8_t type;
+    ValueType type;
     union value{
         float floatVal;
         int32_t int32Val;
@@ -37,19 +42,29 @@ class FastLog{
     int columnCount;
     struct LogColumnEntry* rowData;
     CircBuffer *logger;
-
+    TimeStampFormat                 timeStampFormat;
+    ManagedString timeStampHeading;
 
     public:
-    FastLog();
+    FastLog(int comumns=MICROBIT_FASTLOG_DEFAULT_COLUMNS);
 
     void beginRow();
     void endRow();
 
+
+
+    void logData(const char *key, int value);
+    void logData(ManagedString key, int value);
+
+    void logData(const char *key, uint16_t value);
+    void logData(const char *key, int32_t value);
+    void logData(const char *key, float value);
     void logData(ManagedString key, float value);
     void logData(ManagedString key, uint16_t value);
     void logData(ManagedString key, int32_t value);
     void saveLog();
 
+    void setTimeStamp(TimeStampFormat format);
     ManagedString getHeaders();
 
     ManagedString getHeaders(int index);
@@ -59,11 +74,10 @@ class FastLog{
 
     uint16_t getNumberOfHeaders();
 private:
-        void init();
+    void init();
+    void _storeValue(ManagedString key, ValueType type, void* addr);
 };
 
 
-#ifndef runningLocal
 }
-#endif
 #endif
