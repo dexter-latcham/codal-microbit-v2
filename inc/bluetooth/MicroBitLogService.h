@@ -14,7 +14,7 @@
 #include "string.h"
 #include "stdint.h"
 
-#define MICROBIT_FASTBT_MAX_BYTES 20
+#define MICROBIT_LOGBT_MAX_BYTES 20
 class BluetoothSendBuffer {
 public:
     uint8_t *buffer;
@@ -29,7 +29,7 @@ public:
     BluetoothSendBuffer(int size,int charId){
         characteristicId=charId;
         bufferSize=size;
-        int allocSize = bufferSize + MICROBIT_FASTBT_MAX_BYTES;
+        int allocSize = bufferSize + MICROBIT_LOGBT_MAX_BYTES;
         buffer = (uint8_t *)malloc(allocSize);
         memclr(buffer, allocSize);
         txBuffer=buffer+bufferSize;
@@ -52,9 +52,9 @@ protected:
     void listen(bool yes);
 
 
-    void incrementLogRowCount(MicroBitEvent e);
+    void updateRowCount(MicroBitEvent e);
     void newRowLogged(MicroBitEvent e);
-    void logHeaderUpdate(MicroBitEvent e);
+    void newHeaderEvent(MicroBitEvent e);
     void onDataWritten(const microbit_ble_evt_write_t *params);
 
     void onConfirmation( const microbit_ble_evt_hvc_t *params);
@@ -62,13 +62,12 @@ protected:
 
     BluetoothSendBuffer *newRowBuffer;
     BluetoothSendBuffer *getHeaderBuffer;
+    BluetoothSendBuffer *getRowNBuffer;
 
-    // bool enableLiveRowTransmission;
+    bool enableLiveRowTransmission;
+    
     uint16_t rowCount;
     uint16_t headerCount;
-    uint16_t requestedHeader;
-
-    float* rowBuffer;
 
     typedef enum mbbs_cIdx
     {
@@ -88,9 +87,7 @@ protected:
     MicroBitBLEChar *characteristicPtr( int idx)    { return &chars[ idx]; };
 
     void _advanceBufferTail(BluetoothSendBuffer* buf);
-
     void _sendToBuffer(BluetoothSendBuffer* buf, const uint8_t* data, int len);
-
     void _sendNextFromBuffer(BluetoothSendBuffer* buf);
 };
 

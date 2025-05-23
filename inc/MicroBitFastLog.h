@@ -2,7 +2,7 @@
 #define MICROBIT_FASTLOG_H
 
 
-#define MICROBIT_FASTLOG_DEFAULT_COLUMNS 3
+#define MICROBIT_FASTLOG_DEFAULT_COLUMNS 5
 
 #define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
@@ -17,13 +17,6 @@
 
 namespace codal
 {
-
-enum ValueType {
-    TYPE_NONE=0,
-    TYPE_UINT16 = 1,
-    TYPE_INT32 =2,
-    TYPE_FLOAT=3
-};
 
 class LogColumnEntry
 {
@@ -76,6 +69,7 @@ class FastLog{
 private:
     void init();
     void _storeValue(ManagedString key, ValueType type, void* addr);
+    ManagedString _bufferRetToString(returnedBufferElem ret);
 };
 
 

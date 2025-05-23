@@ -11,6 +11,22 @@
 namespace codal
 {
 
+enum ValueType {
+    TYPE_NONE=0,
+    TYPE_UINT16 = 1,
+    TYPE_INT32 =2,
+    TYPE_FLOAT=3
+};
+
+typedef struct returnedBufferElem{
+    ValueType type;
+    union value{
+        float floatVal;
+        int32_t int32Val;
+        uint16_t int16Val;
+    }value;
+}returnedBufferElem;
+
 typedef struct {
     uint8_t* start;
     uint8_t* last;
@@ -47,7 +63,9 @@ public:
     void logVal(float value);
 
     int getElementCount();
-    ManagedString getElem(int index);
+    returnedBufferElem getElem(int index);
+    //
+    // ManagedString getElem(int index);
 
 private:
     uint8_t* _getNextWriteLoc(TypeMeta* meta);
@@ -56,7 +74,7 @@ private:
 
     int _countSection(TypeMeta*meta);
 
-    uint8_t* _getElemIndex(TypeMeta* meta,int index);
+    // uint8_t* _getElemIndex(TypeMeta* meta,int index);
 };
 
 }

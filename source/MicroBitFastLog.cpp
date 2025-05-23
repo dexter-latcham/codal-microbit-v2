@@ -11,6 +11,10 @@
 extern MicroBit uBit;
 
 using namespace codal;
+
+//we can only use a fixed number of columns
+//it is suggested that this be provided when used
+//if not, a default value of 5 is used
 FastLog::FastLog(int columns){
     this->status=0;
     this->columnCount=columns;
@@ -36,7 +40,7 @@ void FastLog::init(){
         rowData[i].key=ManagedString::EmptyString;
     }
 
-    logger = new CircBuffer(2000);
+    logger = new CircBuffer(1000);
 
     status |= MICROBIT_FASTLOG_STATUS_INITIALIZED;
 
@@ -213,13 +217,47 @@ uint16_t FastLog::getNumberOfRows(){
     return (entries - extraCells) / columnCount;
 }
 
+
+
+static ManagedString floatToStr(float num){
+    int integerPart = (int)num;
+    int fractionPart = (int)((num-integerPart)*100000.0f);
+
+    ManagedString ret(integerPart);
+    ManagedString zero = "0";
+    if(fractionPart!=0){
+        ManagedString fracPart(fractionPart);
+        while(fracPart.length()<5){
+            fracPart=zero+fracPart;
+        }
+        ret=ret+"."+fracPart;
+    }
+    return ret;
+}
+
+ManagedString FastLog::_bufferRetToString(returnedBufferElem ret){
+    if(ret.type == TYPE_UINT16){
+        int intVal = (int)ret.value.int16Val;
+        return ManagedString(intVal);
+    }else if(ret.type == TYPE_INT32){
+        int intVal = (int)ret.value.int32Val;
+        return ManagedString(intVal);
+    }else if(ret.type == TYPE_FLOAT){
+        ManagedString floatStr=floatToStr(ret.value.floatVal);
+        return ManagedString(floatStr);
+    }
+    return ManagedString::EmptyString;
+}
+
 ManagedString FastLog::getRow(int row){
     if(row<0){
         int start = row*columnCount;
         int end = start+columnCount;
-        ManagedString ret = logger->getElem(start);
+        returnedBufferElem returnedElem = logger->getElem(start);
+        ManagedString ret = _bufferRetToString(returnedElem);
         for(int i=start+1;i<end;i++){
-            ret=ret+","+logger->getElem(i);
+            returnedElem = logger->getElem(i);
+            ret=ret+","+_bufferRetToString(returnedElem);
         }
         return ret;
     }
@@ -254,7 +292,7 @@ void FastLog::saveLog(){
     init();
     MicroBitLog log = uBit.log;
 
-    log.clear(true);
+    // log.clear(true);
     log.setTimeStamp(codal::TimeStampFormat::None);
     log.setSerialMirroring(false);
 
@@ -275,8 +313,9 @@ void FastLog::saveLog(){
             log.beginRow();
         }
         if(rowData[columnIndex].key!=ManagedString::EmptyString){
-            ManagedString elem = logger->getElem(i+extraCells);
-            log.logData(rowData[columnIndex].key,elem);
+            returnedBufferElem returnedElem = logger->getElem(i+extraCells);
+            ManagedString elemString = _bufferRetToString(returnedElem);
+            log.logData(rowData[columnIndex].key,elemString);
         }
         columnIndex++;
     }

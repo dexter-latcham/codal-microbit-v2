@@ -79,7 +79,7 @@ DEALINGS IN THE SOFTWARE.
 #include "MicroBitBLEManager.h"
 #include "MicroBitLEDService.h"
 #include "MicroBitAccelerometerService.h"
-#include "CustomBtService.h"
+#include "MicroBitLogService.h"
 #include "MicroBitMagnetometerService.h"
 #include "MicroBitButtonService.h"
 #include "MicroBitIOPinService.h"
