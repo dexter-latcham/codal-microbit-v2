@@ -55,7 +55,9 @@ class FastLog{
     void logData(const char *key, uint16_t value);
     void logData(const char *key, int32_t value);
     void logData(const char *key, float value);
+    void logData(const char *key, double value);
     void logData(ManagedString key, float value);
+    void logData(ManagedString key, double value);
     void logData(ManagedString key, uint16_t value);
     void logData(ManagedString key, int32_t value);
     void saveLog();

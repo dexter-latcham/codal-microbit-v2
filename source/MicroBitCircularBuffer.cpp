@@ -18,7 +18,6 @@ void CircBuffer::init() {
     if (status & MICROBIT_FASTLOG_STATUS_INITIALIZED){
         return;
     }
-
     full=false;
     dataStart = (uint8_t*)malloc(maxByteSize);
     if (dataStart == NULL) {
@@ -72,6 +71,11 @@ void CircBuffer::logVal(int32_t val) {
         int32Meta->bytes=sizeof(int32_t);
     }
     _logData(&int32Meta,(uint8_t*)&val);
+}
+
+
+void CircBuffer::logVal(double val) {
+    logVal((float)val);
 }
 
 void CircBuffer::logVal(float val) {
@@ -190,7 +194,7 @@ void CircBuffer::_clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to){
     
     //from itn16Start to int16End
     //if from to is outside of this range then just return
-    if(meta->start<meta->last){
+    if(meta->start < meta->last){
         if(meta->last<from){
             return;
         }
@@ -249,104 +253,33 @@ void CircBuffer::_clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to){
     }
 }
 
-/**
-* helper function to convert a float to a string
-*/
-static ManagedString floatToStr(float num){
-    int integerPart = (int)num;
-    int fractionPart = (int)((num-integerPart)*100000.0f);
-
-    ManagedString ret(integerPart);
-    ManagedString zero = "0";
-    if(fractionPart!=0){
-        ManagedString fracPart(fractionPart);
-        while(fracPart.length()<5){
-            fracPart=zero+fracPart;
-        }
-        ret=ret+"."+fracPart;
-    }
-    return ret;
-}
-
-/**
-* returns the number of elements of a provided type stored in the buffer
-*/
-int CircBuffer::_countSection(TypeMeta*meta){
-    if(meta==NULL){
-        return 0;
-    }
-    int count=0;
-    uint8_t* from = meta->start;
-    uint8_t* to = meta->last;
-
-    uint8_t* current = from;
-    if(to < from){
-        current=from;
-        while(current+meta->bytes<=dataEnd){
-            count+=1;
-            current+=meta->bytes;
-        }
-        current=dataStart;
-    }
-    while(current<=to){
-        count+=1;
-        current+=meta->bytes;
-    }
-    return count;
-}
-
-
 
 returnedBufferElem CircBuffer::getElem(int index){
     TypeMeta *meta = int16Meta;
     int count =0;
+    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
+    uint8_t* current = NULL;
+
     returnedBufferElem ret;
     for(int i=0;i<3;i++){
-        if(i==0){
-            meta=int16Meta;
-            ret.type=TYPE_UINT16;
-        }else if(i==1){
-            meta = int32Meta;
-            ret.type=TYPE_INT32;
-        }else{
-            meta = floatMeta;
-            ret.type=TYPE_FLOAT;
-        }
+        meta = metaList[i];
         if(meta == NULL){
             continue;
         }
-        uint8_t* from = meta->start;
-        uint8_t* to = meta->last;
-
-        uint8_t* current = from;
-        if(to < from){
-            current=from;
+        current = meta->start;
+        if(meta->last < meta->start){
             while(current+meta->bytes<=dataEnd){
                 if(index==count){
-                    if(i==0){
-                        ret.value.int16Val=*(uint16_t*)current;
-                    }else if(i==1){
-                        ret.value.int32Val=*(int32_t*)current;
-                    }else{
-                        ret.value.floatVal=*(float*)current;
-                    }
-                    return ret;
+                    goto valueFound;
                 }
                 current+=meta->bytes;
                 count+=1;
             }
             current=dataStart;
         }
-        while(current<=to){
+        while(current<=meta->last){
             if(index==count){
-                if(i==0){
-                    ret.value.int16Val=*(uint16_t*)current;
-                }else if(i==1){
-                    ret.value.int32Val=*(int32_t*)current;
-                }else{
-                    ret.value.floatVal=*(float*)current;
-                }
-                return ret;
+                goto valueFound;
             }
             count+=1;
             current+=meta->bytes;
@@ -354,13 +287,133 @@ returnedBufferElem CircBuffer::getElem(int index){
     }
     ret.type=TYPE_NONE;
     return ret;
+valueFound:
+    if(meta==int16Meta){
+        ret.type=TYPE_UINT16;
+        ret.value.int16Val=*(uint16_t*)current;
+    }else if(meta==int32Meta){
+        ret.type=TYPE_INT32;
+        ret.value.int32Val=*(int32_t*)current;
+    }else{
+        ret.type=TYPE_FLOAT;
+        ret.value.floatVal=*(float*)current;
+    }
+    return ret;
 }
+
 
 int CircBuffer::getElementCount(){
     init();
-    return _countSection(int16Meta)+_countSection(int32Meta)+_countSection(floatMeta);
+    TypeMeta* meta = int16Meta;
+    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
+    int count=0;
+    for(int i=0;i<3;i++){
+        meta = metaList[i];
+        if(meta==NULL){
+            continue;
+        }
+        uint8_t* current = meta->start;
+        if(meta->last < meta->start){
+            while(current+meta->bytes<=dataEnd){
+                count+=1;
+                current+=meta->bytes;
+            }
+            current=dataStart;
+        }
+        while(current<=meta->last){
+            count+=1;
+            current+=meta->bytes;
+        }
+    }
+    return count;
 }
 
+// //
+// /**
+// * returns the number of elements of a provided type stored in the buffer
+// */
+// int CircBuffer::_countSection(TypeMeta*meta){
+//     if(meta==NULL){
+//         return 0;
+//     }
+//     int count=0;
+//     uint8_t* from = meta->start;
+//     uint8_t* to = meta->last;
+
+//     uint8_t* current = from;
+//     if(to < from){
+//         current=from;
+//         while(current+meta->bytes<=dataEnd){
+//             count+=1;
+//             current+=meta->bytes;
+//         }
+//         current=dataStart;
+//     }
+//     while(current<=to){
+//         count+=1;
+//         current+=meta->bytes;
+//     }
+//     return count;
+// }
+
+// returnedBufferElem CircBuffer::getElem(int index){
+//     TypeMeta *meta = int16Meta;
+//     int count =0;
+//     returnedBufferElem ret;
+//     for(int i=0;i<3;i++){
+//         if(i==0){
+//             meta=int16Meta;
+//             ret.type=TYPE_UINT16;
+//         }else if(i==1){
+//             meta = int32Meta;
+//             ret.type=TYPE_INT32;
+//         }else{
+//             meta = floatMeta;
+//             ret.type=TYPE_FLOAT;
+//         }
+//         if(meta == NULL){
+//             continue;
+//         }
+//         uint8_t* from = meta->start;
+//         uint8_t* to = meta->last;
+
+//         uint8_t* current = from;
+//         if(to < from){
+//             current=from;
+//             while(current+meta->bytes<=dataEnd){
+//                 if(index==count){
+//                     if(i==0){
+//                         ret.value.int16Val=*(uint16_t*)current;
+//                     }else if(i==1){
+//                         ret.value.int32Val=*(int32_t*)current;
+//                     }else{
+//                         ret.value.floatVal=*(float*)current;
+//                     }
+//                     return ret;
+//                 }
+//                 current+=meta->bytes;
+//                 count+=1;
+//             }
+//             current=dataStart;
+//         }
+//         while(current<=to){
+//             if(index==count){
+//                 if(i==0){
+//                     ret.value.int16Val=*(uint16_t*)current;
+//                 }else if(i==1){
+//                     ret.value.int32Val=*(int32_t*)current;
+//                 }else{
+//                     ret.value.floatVal=*(float*)current;
+//                 }
+//                 return ret;
+//             }
+//             count+=1;
+//             current+=meta->bytes;
+//         }
+//     }
+//     ret.type=TYPE_NONE;
+//     return ret;
+// }
 // /**
 // * returns the string representation of the nth element in the buffer
 // */
@@ -502,3 +555,22 @@ int CircBuffer::getElementCount(){
 //     return NULL;
 // }
 
+
+// /**
+// * helper function to convert a float to a string
+// */
+// static ManagedString floatToStr(float num){
+//     int integerPart = (int)num;
+//     int fractionPart = (int)((num-integerPart)*100000.0f);
+
+//     ManagedString ret(integerPart);
+//     ManagedString zero = "0";
+//     if(fractionPart!=0){
+//         ManagedString fracPart(fractionPart);
+//         while(fracPart.length()<5){
+//             fracPart=zero+fracPart;
+//         }
+//         ret=ret+"."+fracPart;
+//     }
+//     return ret;
+// }

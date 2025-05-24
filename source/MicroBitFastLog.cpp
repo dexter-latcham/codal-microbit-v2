@@ -215,6 +215,10 @@ void FastLog::logData(const char *key, int32_t value) {
 void FastLog::logData(const char *key, float value) {
     return logData(ManagedString(key), value);
 }
+
+void FastLog::logData(const char *key, double value) {
+    return logData(ManagedString(key), (float)value);
+}
 void FastLog::logData(ManagedString key, uint16_t value){
     _storeValue(key,TYPE_UINT16,&value);
 }
@@ -225,6 +229,9 @@ void FastLog::logData(ManagedString key, float value){
     _storeValue(key,TYPE_FLOAT,&value);
 }
 
+void FastLog::logData(ManagedString key, double value){
+    _storeValue(key,TYPE_FLOAT,&value);
+}
 
 void FastLog::_storeValue(ManagedString key, ValueType type, void* addr){
     init();
@@ -390,7 +397,7 @@ void FastLog::saveLog(){
     log.setTimeStamp(codal::TimeStampFormat::None);
     log.setSerialMirroring(false);
 
-    if(timeStampHeading!=ManagedString::EmptyString){
+    if(timeStampFormat!=TimeStampFormat::None){
         //if timestamp used, make sure this is the first column in the data log
         log.logData(timeStampHeading,ManagedString::EmptyString);
     }

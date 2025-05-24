@@ -55,24 +55,20 @@ public:
 
 
     void logVal(int value);
-
     void logVal(uint16_t value);
-
     void logVal(int32_t value);
-
     void logVal(float value);
+    void logVal(double value);
+
 
     int getElementCount();
     returnedBufferElem getElem(int index);
-    //
-    // ManagedString getElem(int index);
 
 private:
     uint8_t* _getNextWriteLoc(TypeMeta* meta);
     void _clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to);
     void _logData(TypeMeta ** meta,uint8_t* data);
 
-    int _countSection(TypeMeta*meta);
 
     // uint8_t* _getElemIndex(TypeMeta* meta,int index);
 };
