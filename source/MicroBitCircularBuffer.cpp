@@ -14,6 +14,25 @@ CircBuffer::CircBuffer(int size) {
     this->floatMeta=NULL;
 }
 
+CircBuffer::~CircBuffer(){
+    if(int16Meta!=NULL){
+        free(int16Meta);
+        int16Meta=NULL;
+    }
+    if(int32Meta!=NULL){
+        free(int32Meta);
+        int32Meta=NULL;
+    }
+    if(floatMeta!=NULL){
+        free(floatMeta);
+        floatMeta=NULL;
+    }
+    if(dataStart!=NULL){
+        free(dataStart);
+        dataStart=NULL;
+    }
+}
+
 void CircBuffer::init() {
     if (status & MICROBIT_FASTLOG_STATUS_INITIALIZED){
         return;

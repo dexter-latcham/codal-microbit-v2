@@ -48,6 +48,8 @@ private:
 public:
     CircBuffer(int size);
 
+    ~CircBuffer();
+
     /**
      * Initializes the data buffer.
      */

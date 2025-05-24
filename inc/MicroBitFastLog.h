@@ -8,6 +8,7 @@
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
 #define MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED     0x0004
 #define MICROBIT_FASTLOG_STATUS_USER_SET_COLS     0x0008
+#define MICROBIT_FASTLOG_CIRCULAR_BUFFER_CLEARED     0x0010
 
 #include "stdint.h"
 #include "MicroBitCircularBuffer.h"
@@ -45,6 +46,8 @@ class FastLog{
     public:
     FastLog(int columns=-1);
 
+    ~FastLog();
+
     void beginRow();
     void endRow();
 
@@ -61,7 +64,7 @@ class FastLog{
     void logData(ManagedString key, double value);
     void logData(ManagedString key, uint16_t value);
     void logData(ManagedString key, int32_t value);
-    void saveLog();
+    void saveLog(bool deleteLog=true);
 
     void setTimeStamp(TimeStampFormat format);
     ManagedString getHeaders();

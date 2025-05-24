@@ -1325,6 +1325,7 @@ ManagedString MicroBitLog::getHeader(uint16_t headerNo){
     }
     return rowData[headerNo].key;
 }
+
 /**
  * Destructor.
  */

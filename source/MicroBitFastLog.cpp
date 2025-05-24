@@ -36,6 +36,9 @@ FastLog::FastLog(int columns){
 
 void FastLog::init(){
     if (status & MICROBIT_FASTLOG_STATUS_INITIALIZED){
+        if(logger==NULL){
+            logger = new CircBuffer(1000);
+        }
         return;
     }
 
@@ -65,8 +68,9 @@ void FastLog::setTimeStamp(TimeStampFormat format){
 
     //can only disable timestamp if we have not yet logged a row
     //otherwise it is still recorded but ignored when time to save
+
+    timeStampFormat=format;
     if(format==TimeStampFormat::None){
-        timeStampFormat=format;
         if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
             timeStampHeading=ManagedString::EmptyString;
         }
@@ -101,30 +105,11 @@ void FastLog::setTimeStamp(TimeStampFormat format){
 
     ManagedString timeStampHeadingTmp = "Time (" + units + ")";
 
-    if (status & MICROBIT_FASTLOG_STATUS_USER_SET_COLS){
-        if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
-            if(timeStampFormat==TimeStampFormat::None){
-                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*columnCount+1);
-                for(int j=0;j<columnCount+1;j++){
-                    new (&newRowData[j]) LogColumnEntry;
-                    newRowData[j].type=TYPE_NONE;
-                    newRowData[j].key=rowData[j].key;
-                }
-                free(rowData);
-                rowData=newRowData;
-                columnCount=columnCount+1;
-                timeStampFormat=format;
-                timeStampHeading=timeStampHeadingTmp;
-                return;
-            }else{
-                timeStampFormat=format;
-                timeStampHeading=timeStampHeadingTmp;
-                return;
-            }
-        }
+    if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
+        timeStampHeading=timeStampHeadingTmp;
+        return;
     }
 
-    timeStampFormat=format;
     for(int i=0;i<columnCount;i++){
         if(rowData[i].key==timeStampHeading){
             rowData[i].key=timeStampHeadingTmp;
@@ -156,6 +141,24 @@ void FastLog::endRow(){
 
     init();
 
+
+    if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
+        if (status & MICROBIT_FASTLOG_STATUS_USER_SET_COLS){
+            if(timeStampFormat!=TimeStampFormat::None){
+                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*columnCount+1);
+                for(int j=0;j<columnCount+1;j++){
+                    new (&newRowData[j]) LogColumnEntry;
+                    newRowData[j].type=TYPE_NONE;
+                    newRowData[j].key=rowData[j].key;
+                    newRowData[j].value=rowData[j].value;
+                }
+                free(rowData);
+                rowData=newRowData;
+                columnCount=columnCount+1;
+            }
+        }
+    }
+
     if(timeStampHeading!=ManagedString::EmptyString){
         CODAL_TIMESTAMP t = system_timer_current_time();
         if(previousLogTime==0){
@@ -174,44 +177,34 @@ void FastLog::endRow(){
     if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
         if (!(status & MICROBIT_FASTLOG_STATUS_USER_SET_COLS)){
             //we now know the number of columns a user needs, the number of currently occupied columns
-            int i=0;
-            while(i < columnCount && rowData[i].type!=TYPE_NONE){
-                if(rowData[i].type==TYPE_UINT16){
-                    logger->logVal((uint16_t)rowData[i].value.int16Val);
-                }else if(rowData[i].type==TYPE_INT32){
-                    logger->logVal((int32_t)rowData[i].value.int32Val);
-                }else if(rowData[i].type==TYPE_FLOAT){
-                    logger->logVal((float)rowData[i].value.floatVal);
-                }
-                i+=1;
+            int count=0;
+            while(count < columnCount && rowData[count].type!=TYPE_NONE){
+                count+=1;
             }
             //if the number needed is less that what has been allocated, we reduce our allocation
-            if(i!=columnCount){
-                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*i);
-                for(int j=0;j<i;j++){
+            if(count!=columnCount){
+                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*count);
+                for(int j=0;j<count;j++){
                     new (&newRowData[j]) LogColumnEntry;
-                    newRowData[j].type=TYPE_NONE;
+                    newRowData[j].type=rowData[j].type;
                     newRowData[j].key=rowData[j].key;
+                    newRowData[j].value=rowData[j].value;
                 }
                 free(rowData);
                 rowData=newRowData;
-                columnCount=i;
+                columnCount=count;
             }
-            status |= MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED;
-            status &= ~MICROBIT_FASTLOG_STATUS_ROW_STARTED;
-            return;
         }
+        status |= MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED;
     }
 
     for(int i=0;i<columnCount;i++){
-        if(rowData[i].type!=TYPE_NONE){
-            if(rowData[i].type==TYPE_UINT16){
-                logger->logVal((uint16_t)rowData[i].value.int16Val);
-            }else if(rowData[i].type==TYPE_INT32){
-                logger->logVal((int32_t)rowData[i].value.int32Val);
-            }else if(rowData[i].type==TYPE_FLOAT){
-                logger->logVal((float)rowData[i].value.floatVal);
-            }
+        if(rowData[i].type==TYPE_UINT16){
+            logger->logVal((uint16_t)rowData[i].value.int16Val);
+        }else if(rowData[i].type==TYPE_INT32){
+            logger->logVal((int32_t)rowData[i].value.int32Val);
+        }else if(rowData[i].type==TYPE_FLOAT){
+            logger->logVal((float)rowData[i].value.floatVal);
         }else{
             logger->logVal((uint16_t)0);
         }
@@ -292,24 +285,6 @@ void FastLog::_storeValue(ManagedString key, ValueType type, void* addr){
 }
 
 
-uint16_t FastLog::getNumberOfHeaders(){
-    init();
-    uint16_t count=0;
-    for(int i=0;i<columnCount;i++){
-        if(rowData[i].key!=ManagedString::EmptyString){
-            count++;
-        }
-    }
-    return count;
-}
-
-uint16_t FastLog::getNumberOfRows(){
-    init();
-    int entries = logger->getElementCount();
-    int extraCells = entries % columnCount;
-    return (entries - extraCells) / columnCount;
-}
-
 
 
 static ManagedString floatToStr(float num){
@@ -327,7 +302,6 @@ static ManagedString floatToStr(float num){
     }
     return ret;
 }
-
 ManagedString FastLog::_bufferRetToString(returnedBufferElem ret){
     if(ret.type == TYPE_UINT16){
         int intVal = (int)ret.value.int16Val;
@@ -340,6 +314,120 @@ ManagedString FastLog::_bufferRetToString(returnedBufferElem ret){
         return ManagedString(floatStr);
     }
     return ManagedString::EmptyString;
+}
+
+
+static ManagedString padString(ManagedString s, int digits) {
+    ManagedString zero = "0";
+    while(s.length() != digits)
+        s = zero + s;
+
+    return s;
+}
+
+ManagedString FastLog::_timeOffsetToString(int timeOffset){
+    CODAL_TIMESTAMP totalTimeInMs = (logStartTime+(CODAL_TIMESTAMP)timeOffset) / (CODAL_TIMESTAMP)timeStampFormat;
+    int billions = totalTimeInMs / (CODAL_TIMESTAMP) 1000000000;
+    int units = totalTimeInMs % (CODAL_TIMESTAMP) 1000000000;
+    int fraction = 0;
+
+    if ((int)timeStampFormat > 1) {
+        fraction = units % 100;
+        units = units / 100;
+        billions = billions / 100;
+    }
+
+    ManagedString u(units);
+    ManagedString f(fraction);
+    ManagedString s;
+    f = padString(f, 2);
+
+    if (billions) {
+        s = s + billions;
+        u = padString(u, 9);
+    }
+
+    s = s + u;
+
+    // Add two decimal places for anything other than milliseconds.
+    if ((int)timeStampFormat > 1){
+        s = s + "." + f;
+    }
+    return s;
+}
+
+FastLog::~FastLog(){
+    if(logger!=NULL){
+        saveLog(true);
+    }
+    if(rowData!=NULL){
+        free(rowData);
+    }
+}
+
+void FastLog::saveLog(bool deleteLog){
+    if (!(status & MICROBIT_FASTLOG_STATUS_INITIALIZED)){
+        return;
+    }
+    if(logger==NULL){
+        return;
+    }
+
+    int entries = logger->getElementCount();
+    int extraCells = entries % columnCount;
+    if(entries==0){
+        return;
+    }
+    int columnIndex=0;
+
+    int timeOffset=0;
+
+
+    MicroBitLog log = uBit.log;
+    // log.clear(true);
+    log.setTimeStamp(codal::TimeStampFormat::None);
+    log.setSerialMirroring(false);
+    log.beginRow();
+
+    if(timeStampHeading!=ManagedString::EmptyString){
+        if(timeStampFormat!=TimeStampFormat::None){
+            //if timestamp used, make sure this is the first column in the data log
+            log.logData(timeStampHeading,0);
+        }
+    }
+
+    for(int i=0;i<entries-extraCells;i++){
+        if(i%columnCount==0){
+            columnIndex=0;
+            if(i!=0){
+                log.endRow();
+                log.beginRow();
+            }
+        }
+        if(rowData[columnIndex].key!=ManagedString::EmptyString){
+            returnedBufferElem returnedElem = logger->getElem(i+extraCells);
+            if(rowData[columnIndex].key==timeStampHeading){
+                if(timeStampFormat != TimeStampFormat::None){
+                    if(returnedElem.type == TYPE_UINT16){
+                         timeOffset+= (int)returnedElem.value.int16Val;
+                    }else if(returnedElem.type == TYPE_INT32){
+                         timeOffset+= (int)returnedElem.value.int32Val;
+                    }else if(returnedElem.type == TYPE_FLOAT){
+                         timeOffset+= (int)returnedElem.value.floatVal;
+                    }
+                    log.logData(rowData[columnIndex].key,_timeOffsetToString(timeOffset));
+                }
+            }else{
+                log.logData(rowData[columnIndex].key,_bufferRetToString(returnedElem));
+            }
+        }
+        columnIndex++;
+    }
+    log.endRow();
+    if(deleteLog){
+        delete logger;
+        logger=NULL;
+    }
 }
 
 ManagedString FastLog::getRow(int row){
@@ -381,93 +469,23 @@ ManagedString FastLog::getHeaders(){
     return result;
 }
 
-static ManagedString padString(ManagedString s, int digits) {
-    ManagedString zero = "0";
-    while(s.length() != digits)
-        s = zero + s;
-
-    return s;
-}
-
-ManagedString FastLog::_timeOffsetToString(int timeOffset){
-    CODAL_TIMESTAMP totalTimeInMs = (logStartTime+(CODAL_TIMESTAMP)timeOffset) / (CODAL_TIMESTAMP)timeStampFormat;
-    int billions = totalTimeInMs / (CODAL_TIMESTAMP) 1000000000;
-    int units = totalTimeInMs % (CODAL_TIMESTAMP) 1000000000;
-    int fraction = 0;
-
-    if ((int)timeStampFormat > 1) {
-        fraction = units % 100;
-        units = units / 100;
-        billions = billions / 100;
-    }
-
-    ManagedString u(units);
-    ManagedString f(fraction);
-    ManagedString s;
-    f = padString(f, 2);
-
-    if (billions) {
-        s = s + billions;
-        u = padString(u, 9);
-    }
-
-    s = s + u;
-
-    // Add two decimal places for anything other than milliseconds.
-    if ((int)timeStampFormat > 1){
-        s = s + "." + f;
-    }
-    return s;
-}
-
-void FastLog::saveLog(){
+uint16_t FastLog::getNumberOfHeaders(){
     init();
-    MicroBitLog log = uBit.log;
+    uint16_t count=0;
+    for(int i=0;i<columnCount;i++){
+        if(rowData[i].key!=ManagedString::EmptyString){
+            count++;
+        }
+    }
+    return count;
+}
 
-    // log.clear(true);
-    log.setTimeStamp(codal::TimeStampFormat::None);
-    log.setSerialMirroring(false);
-
-
+uint16_t FastLog::getNumberOfRows(){
+    init();
     int entries = logger->getElementCount();
     int extraCells = entries % columnCount;
-    int columnIndex=0;
-
-    int timeOffset=0;
-
-    log.beginRow();
-    if(timeStampFormat!=TimeStampFormat::None){
-        //if timestamp used, make sure this is the first column in the data log
-        log.logData(timeStampHeading,0);
-    }
-    for(int i=0;i<entries-extraCells;i++){
-        if(i%columnCount==0){
-            columnIndex=0;
-            if(i!=0){
-                log.endRow();
-                log.beginRow();
-            }
-        }
-        if(rowData[columnIndex].key!=ManagedString::EmptyString){
-            returnedBufferElem returnedElem = logger->getElem(i+extraCells);
-            if(rowData[columnIndex].key==timeStampHeading){
-                if(timeStampFormat != TimeStampFormat::None){
-                    if(returnedElem.type == TYPE_UINT16){
-                         timeOffset+= (int)returnedElem.value.int16Val;
-                    }else if(returnedElem.type == TYPE_INT32){
-                         timeOffset+= (int)returnedElem.value.int32Val;
-                    }else if(returnedElem.type == TYPE_FLOAT){
-                         timeOffset+= (int)returnedElem.value.floatVal;
-                    }
-                    log.logData(rowData[columnIndex].key,_timeOffsetToString(timeOffset));
-                }
-            }else{
-                ManagedString elemString = _bufferRetToString(returnedElem);
-                log.logData(rowData[columnIndex].key,elemString);
-            }
-        }
-        columnIndex++;
-    }
-    log.endRow();
+    return (entries - extraCells) / columnCount;
 }
+
+
 
