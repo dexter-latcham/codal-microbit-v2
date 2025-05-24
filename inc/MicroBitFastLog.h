@@ -2,10 +2,11 @@
 #define MICROBIT_FASTLOG_H
 
 
-#define MICROBIT_FASTLOG_DEFAULT_COLUMNS 5
+#define MICROBIT_FASTLOG_DEFAULT_COLUMNS 20
 
 #define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
+#define MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED     0x0004
 
 #include "stdint.h"
 #include "MicroBitCircularBuffer.h"
@@ -37,9 +38,11 @@ class FastLog{
     CircBuffer *logger;
     TimeStampFormat                 timeStampFormat;
     ManagedString timeStampHeading;
+    CODAL_TIMESTAMP logStartTime;
+    CODAL_TIMESTAMP previousLogTime;
 
     public:
-    FastLog(int comumns=MICROBIT_FASTLOG_DEFAULT_COLUMNS);
+    FastLog(int columns=-1);
 
     void beginRow();
     void endRow();
@@ -69,6 +72,8 @@ class FastLog{
 private:
     void init();
     void _storeValue(ManagedString key, ValueType type, void* addr);
+
+    ManagedString _timeOffsetToString(int timeOffset);
     ManagedString _bufferRetToString(returnedBufferElem ret);
 };
 
