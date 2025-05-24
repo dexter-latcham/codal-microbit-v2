@@ -18,15 +18,17 @@ using namespace codal;
 FastLog::FastLog(int columns){
     this->status=0;
     if(columns!=-1){
-        this->status |= MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED;
+        this->status |= MICROBIT_FASTLOG_STATUS_USER_SET_COLS;
         this->columnCount=columns;
+        this->timeStampFormat = TimeStampFormat::None;
+        this->timeStampHeading = ManagedString::EmptyString;
     }else{
         this->columnCount=MICROBIT_FASTLOG_DEFAULT_COLUMNS;
+        this->timeStampFormat = TimeStampFormat::Milliseconds;
+        this->timeStampHeading = ManagedString("Time (milliseconds)");
     }
 
     this->rowData=NULL;
-    this->timeStampFormat = TimeStampFormat::Milliseconds;
-    this->timeStampHeading = ManagedString("Time (milliseconds)");
     this->logger=NULL;
     this->logStartTime=0;
     this->previousLogTime=0;
@@ -59,6 +61,7 @@ void FastLog::setTimeStamp(TimeStampFormat format){
     if (timeStampFormat == format && timeStampFormat == TimeStampFormat::None){
         return;
     }
+
 
     //can only disable timestamp if we have not yet logged a row
     //otherwise it is still recorded but ignored when time to save
@@ -95,15 +98,41 @@ void FastLog::setTimeStamp(TimeStampFormat format){
         break;
     }
 
+
     ManagedString timeStampHeadingTmp = "Time (" + units + ")";
+
+    if (status & MICROBIT_FASTLOG_STATUS_USER_SET_COLS){
+        if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
+            if(timeStampFormat==TimeStampFormat::None){
+                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*columnCount+1);
+                for(int j=0;j<columnCount+1;j++){
+                    new (&newRowData[j]) LogColumnEntry;
+                    newRowData[j].type=TYPE_NONE;
+                    newRowData[j].key=rowData[j].key;
+                }
+                free(rowData);
+                rowData=newRowData;
+                columnCount=columnCount+1;
+                timeStampFormat=format;
+                timeStampHeading=timeStampHeadingTmp;
+                return;
+            }else{
+                timeStampFormat=format;
+                timeStampHeading=timeStampHeadingTmp;
+                return;
+            }
+        }
+    }
+
+    timeStampFormat=format;
     for(int i=0;i<columnCount;i++){
         if(rowData[i].key==timeStampHeading){
             rowData[i].key=timeStampHeadingTmp;
             timeStampHeading=timeStampHeadingTmp;
-            timeStampFormat=format;
             return;
         }
     }
+    timeStampHeading=timeStampHeadingTmp;
 }
 
 void FastLog::beginRow(){
@@ -143,33 +172,35 @@ void FastLog::endRow(){
 
     //if this is the first row, special case
     if (!(status & MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED)){
-        //we now know the number of columns a user needs, the number of currently occupied columns
-        int i=0;
-        while(i < columnCount && rowData[i].type!=TYPE_NONE){
-            if(rowData[i].type==TYPE_UINT16){
-                logger->logVal((uint16_t)rowData[i].value.int16Val);
-            }else if(rowData[i].type==TYPE_INT32){
-                logger->logVal((int32_t)rowData[i].value.int32Val);
-            }else if(rowData[i].type==TYPE_FLOAT){
-                logger->logVal((float)rowData[i].value.floatVal);
+        if (!(status & MICROBIT_FASTLOG_STATUS_USER_SET_COLS)){
+            //we now know the number of columns a user needs, the number of currently occupied columns
+            int i=0;
+            while(i < columnCount && rowData[i].type!=TYPE_NONE){
+                if(rowData[i].type==TYPE_UINT16){
+                    logger->logVal((uint16_t)rowData[i].value.int16Val);
+                }else if(rowData[i].type==TYPE_INT32){
+                    logger->logVal((int32_t)rowData[i].value.int32Val);
+                }else if(rowData[i].type==TYPE_FLOAT){
+                    logger->logVal((float)rowData[i].value.floatVal);
+                }
+                i+=1;
             }
-            i+=1;
-        }
-        //if the number needed is less that what has been allocated, we reduce our allocation
-        if(i!=columnCount){
-            LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*i);
-            for(int j=0;j<i;j++){
-                new (&newRowData[j]) LogColumnEntry;
-                newRowData[j].type=TYPE_NONE;
-                newRowData[j].key=rowData[j].key;
+            //if the number needed is less that what has been allocated, we reduce our allocation
+            if(i!=columnCount){
+                LogColumnEntry* newRowData=(LogColumnEntry*)malloc(sizeof(LogColumnEntry)*i);
+                for(int j=0;j<i;j++){
+                    new (&newRowData[j]) LogColumnEntry;
+                    newRowData[j].type=TYPE_NONE;
+                    newRowData[j].key=rowData[j].key;
+                }
+                free(rowData);
+                rowData=newRowData;
+                columnCount=i;
             }
-            free(rowData);
-            rowData=newRowData;
-            columnCount=i;
+            status |= MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED;
+            status &= ~MICROBIT_FASTLOG_STATUS_ROW_STARTED;
+            return;
         }
-        status |= MICROBIT_FASTLOG_STATUS_FIRST_ROW_LOGGED;
-        status &= ~MICROBIT_FASTLOG_STATUS_ROW_STARTED;
-        return;
     }
 
     for(int i=0;i<columnCount;i++){
@@ -191,20 +222,12 @@ void FastLog::endRow(){
 
 
 
+
+
+
 void FastLog::logData(const char *key, int value) {
     return logData(ManagedString(key), value);
 }
-
-void FastLog::logData(ManagedString key, int value) {
-    if(value >=0 && value < 65535){
-        return logData(key, (uint16_t) value);
-    }else if(value >= INT32_MIN && value <= INT32_MAX){
-        return logData(key, (int32_t) value);
-    }else{
-        return logData(key, (float) value);
-    }
-}
-
 void FastLog::logData(const char *key, uint16_t value) {
     return logData(ManagedString(key), value);
 }
@@ -219,19 +242,30 @@ void FastLog::logData(const char *key, float value) {
 void FastLog::logData(const char *key, double value) {
     return logData(ManagedString(key), (float)value);
 }
+
+void FastLog::logData(ManagedString key, int value) {
+    if(value >=0 && value < 65535){
+        return logData(key, (uint16_t) value);
+    }else if(value >= INT32_MIN && value <= INT32_MAX){
+        return logData(key, (int32_t) value);
+    }else{
+        return logData(key, (float) value);
+    }
+}
+
 void FastLog::logData(ManagedString key, uint16_t value){
     _storeValue(key,TYPE_UINT16,&value);
 }
 void FastLog::logData(ManagedString key, int32_t value){
     _storeValue(key,TYPE_INT32,&value);
 }
+void FastLog::logData(ManagedString key, double value){
+    logData(key,(float)value);
+}
 void FastLog::logData(ManagedString key, float value){
     _storeValue(key,TYPE_FLOAT,&value);
 }
 
-void FastLog::logData(ManagedString key, double value){
-    _storeValue(key,TYPE_FLOAT,&value);
-}
 
 void FastLog::_storeValue(ManagedString key, ValueType type, void* addr){
     init();
@@ -245,16 +279,12 @@ void FastLog::_storeValue(ManagedString key, ValueType type, void* addr){
         }
         if(rowData[i].key==key){
             rowData[i].type=type;
-            switch(type){
-                case TYPE_UINT16:
-                    rowData[i].value.int16Val=*(uint16_t*)addr;
-                    break;
-                case TYPE_INT32:
-                    rowData[i].value.int32Val=*(int32_t*)addr;
-                    break;
-                case TYPE_FLOAT:
-                    rowData[i].value.floatVal=*(float*)addr;
-                    break;
+            if(type==TYPE_UINT16){
+                rowData[i].value.int16Val=*(uint16_t*)addr;
+            }else if(type == TYPE_INT32){
+                rowData[i].value.int32Val=*(int32_t*)addr;
+            }else{
+                rowData[i].value.floatVal=*(float*)addr;
             }
             return;
         }
@@ -358,6 +388,7 @@ static ManagedString padString(ManagedString s, int digits) {
 
     return s;
 }
+
 ManagedString FastLog::_timeOffsetToString(int timeOffset){
     CODAL_TIMESTAMP totalTimeInMs = (logStartTime+(CODAL_TIMESTAMP)timeOffset) / (CODAL_TIMESTAMP)timeStampFormat;
     int billions = totalTimeInMs / (CODAL_TIMESTAMP) 1000000000;
@@ -393,27 +424,29 @@ void FastLog::saveLog(){
     init();
     MicroBitLog log = uBit.log;
 
-    log.clear(true);
+    // log.clear(true);
     log.setTimeStamp(codal::TimeStampFormat::None);
     log.setSerialMirroring(false);
 
-    if(timeStampFormat!=TimeStampFormat::None){
-        //if timestamp used, make sure this is the first column in the data log
-        log.logData(timeStampHeading,ManagedString::EmptyString);
-    }
 
     int entries = logger->getElementCount();
     int extraCells = entries % columnCount;
     int columnIndex=0;
 
     int timeOffset=0;
+
+    log.beginRow();
+    if(timeStampFormat!=TimeStampFormat::None){
+        //if timestamp used, make sure this is the first column in the data log
+        log.logData(timeStampHeading,0);
+    }
     for(int i=0;i<entries-extraCells;i++){
         if(i%columnCount==0){
             columnIndex=0;
             if(i!=0){
                 log.endRow();
+                log.beginRow();
             }
-            log.beginRow();
         }
         if(rowData[columnIndex].key!=ManagedString::EmptyString){
             returnedBufferElem returnedElem = logger->getElem(i+extraCells);

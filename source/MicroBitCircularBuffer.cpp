@@ -153,7 +153,6 @@ void CircBuffer::_logData(TypeMeta ** metaPtr,uint8_t* data){
         memcpy(meta->start,data,meta->bytes);
         meta->next=_getNextWriteLoc(meta);
         return;
-        
     }
     
     if(full){
