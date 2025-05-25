@@ -4,7 +4,7 @@
 
 using namespace codal;
 
-CircBuffer::CircBuffer(int size) {
+MicroBitCircularBuffer::MicroBitCircularBuffer(int size) {
     this->maxByteSize=size;
     this->full=false;
     this->status = 0;
@@ -14,7 +14,7 @@ CircBuffer::CircBuffer(int size) {
     this->floatMeta=NULL;
 }
 
-CircBuffer::~CircBuffer(){
+MicroBitCircularBuffer::~MicroBitCircularBuffer(){
     if(int16Meta!=NULL){
         free(int16Meta);
         int16Meta=NULL;
@@ -33,7 +33,7 @@ CircBuffer::~CircBuffer(){
     }
 }
 
-void CircBuffer::init() {
+void MicroBitCircularBuffer::init() {
     if (status & MICROBIT_FASTLOG_STATUS_INITIALIZED){
         return;
     }
@@ -48,17 +48,17 @@ void CircBuffer::init() {
 
 
 
-void CircBuffer::logVal(int value) {
+void MicroBitCircularBuffer::push(int value) {
     if(value >=0 && value < 65535){
-        return logVal((uint16_t) value);
+        return push((uint16_t) value);
     }else if(value >= INT32_MIN && value <= INT32_MAX){
-        return logVal((int32_t) value);
+        return push((int32_t) value);
     }else{
-        return logVal((float) value);
+        return push((float) value);
     }
 }
 
-void CircBuffer::logVal(uint16_t val) {
+void MicroBitCircularBuffer::push(uint16_t val) {
     if(floatMeta!=NULL){
         float valfloat = (float)val;
         return _logData(&floatMeta,(uint8_t*)&valfloat);
@@ -78,7 +78,7 @@ void CircBuffer::logVal(uint16_t val) {
 }
 
 
-void CircBuffer::logVal(int32_t val) {
+void MicroBitCircularBuffer::push(int32_t val) {
     if(floatMeta!=NULL){
         float valfloat = (float)val;
         return _logData(&floatMeta,(uint8_t*)&valfloat);
@@ -93,11 +93,11 @@ void CircBuffer::logVal(int32_t val) {
 }
 
 
-void CircBuffer::logVal(double val) {
-    logVal((float)val);
+void MicroBitCircularBuffer::push(double val) {
+    push((float)val);
 }
 
-void CircBuffer::logVal(float val) {
+void MicroBitCircularBuffer::push(float val) {
     if(floatMeta==NULL){
         floatMeta=(TypeMeta*)malloc(sizeof(TypeMeta));
         floatMeta->start=NULL;
@@ -106,7 +106,127 @@ void CircBuffer::logVal(float val) {
     _logData(&floatMeta,(uint8_t*)&val);
 }
 
+circBufferElem MicroBitCircularBuffer::pop(){
+    circBufferElem ret = {.type=TYPE_NONE};
+    if(int16Meta!=NULL){
+        ret.type=TYPE_UINT16;
+        ret.value.int16Val=*(uint16_t*)int16Meta->start;
+        if(int16Meta->start == int16Meta->last){
+            free(int16Meta);
+            int16Meta=NULL;
+        }else{
+            int16Meta->start+=int16Meta->bytes;
+            if((int16Meta->start+int16Meta->bytes)>dataEnd){
+                int16Meta->start = dataStart;
+            }
+        }
+    }else if(int32Meta!=NULL){
+        ret.type=TYPE_INT32;
+        ret.value.int32Val=*(int32_t*)int32Meta->start;
+        if(int32Meta->start == int32Meta->last){
+            free(int32Meta);
+            int32Meta=NULL;
+        }else{
+            int32Meta->start+=int32Meta->bytes;
+            if((int32Meta->start+int32Meta->bytes)>dataEnd){
+                int32Meta->start = dataStart;
+            }
+        }
+    }else if(floatMeta!=NULL){
+        ret.type=TYPE_FLOAT;
+        ret.value.floatVal=*(float*)floatMeta->start;
+        if(floatMeta->start == floatMeta->last){
+            free(floatMeta);
+            floatMeta=NULL;
+        }else{
+            floatMeta->start+=floatMeta->bytes;
+            if((floatMeta->start+floatMeta->bytes)>dataEnd){
+                floatMeta->start = dataStart;
+            }
+        }
+    }
+    return ret;
+}
+circBufferElem MicroBitCircularBuffer::get(int index){
+    TypeMeta *meta = int16Meta;
+    int count =0;
+    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
+    uint8_t* current = NULL;
 
+    circBufferElem ret;
+    for(int i=0;i<3;i++){
+        meta = metaList[i];
+        if(meta == NULL){
+            continue;
+        }
+        current = meta->start;
+        if(meta->last < meta->start){
+            while(current+meta->bytes<=dataEnd){
+                if(index==count){
+                    goto getValueFound;
+                }
+                current+=meta->bytes;
+                count+=1;
+            }
+            current=dataStart;
+        }
+        while(current<=meta->last){
+            if(index==count){
+                goto getValueFound;
+            }
+            count+=1;
+            current+=meta->bytes;
+        }
+    }
+    ret.type=TYPE_NONE;
+    return ret;
+getValueFound:
+    if(meta==int16Meta){
+        ret.type=TYPE_UINT16;
+        ret.value.int16Val=*(uint16_t*)current;
+    }else if(meta==int32Meta){
+        ret.type=TYPE_INT32;
+        ret.value.int32Val=*(int32_t*)current;
+    }else{
+        ret.type=TYPE_FLOAT;
+        ret.value.floatVal=*(float*)current;
+    }
+    return ret;
+}
+
+
+int MicroBitCircularBuffer::count(){
+    if (!(status & MICROBIT_FASTLOG_STATUS_INITIALIZED)){
+        return 0;
+    }
+
+    if((int16Meta==NULL) && (int32Meta==NULL)&&(floatMeta==NULL)){
+        return 0;
+    }
+
+    TypeMeta* meta = int16Meta;
+    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
+    int count=0;
+    for(int i=0;i<3;i++){
+        meta = metaList[i];
+        if(meta==NULL){
+            continue;
+        }
+        uint8_t* current = meta->start;
+        if(meta->last < meta->start){
+            while(current+meta->bytes<=dataEnd){
+                count+=1;
+                current+=meta->bytes;
+            }
+            current=dataStart;
+        }
+        while(current<=meta->last){
+            count+=1;
+            current+=meta->bytes;
+        }
+    }
+    return count;
+}
 
 
 /**
@@ -116,7 +236,7 @@ void CircBuffer::logVal(float val) {
  *
  * @return the next valid address
  */
-uint8_t* CircBuffer::_getNextWriteLoc(TypeMeta* meta){
+uint8_t* MicroBitCircularBuffer::_getNextWriteLoc(TypeMeta* meta){
     uint8_t* possibleNext = meta->next+meta->bytes;
     if((possibleNext+meta->bytes)>dataEnd){
         possibleNext=dataStart;
@@ -125,13 +245,14 @@ uint8_t* CircBuffer::_getNextWriteLoc(TypeMeta* meta){
     return possibleNext;
 }
 
+
 /**
  * Internal function used to add a number of bytes provided to the head of the buffer
  * Assumes that the value provided matches the type of the buffer region metadata provided
  * @param metaPtr pointer to the metadata for a region in the circular buffer to use
  * @param datra pointer to the data to log
  */
-void CircBuffer::_logData(TypeMeta ** metaPtr,uint8_t* data){
+void MicroBitCircularBuffer::_logData(TypeMeta ** metaPtr,uint8_t* data){
     init();
     TypeMeta* meta = *metaPtr;
     if(meta->start==NULL){
@@ -198,7 +319,7 @@ void CircBuffer::_logData(TypeMeta ** metaPtr,uint8_t* data){
  * @param from start address of the region to be cleared
  * @param to end address of the region to be cleared
  */
-void CircBuffer::_clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to){
+void MicroBitCircularBuffer::_clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to){
     if(metaPtr==NULL || *metaPtr==NULL){
         return;
     }
@@ -272,85 +393,13 @@ void CircBuffer::_clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to){
 }
 
 
-returnedBufferElem CircBuffer::getElem(int index){
-    TypeMeta *meta = int16Meta;
-    int count =0;
-    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
-    uint8_t* current = NULL;
 
-    returnedBufferElem ret;
-    for(int i=0;i<3;i++){
-        meta = metaList[i];
-        if(meta == NULL){
-            continue;
-        }
-        current = meta->start;
-        if(meta->last < meta->start){
-            while(current+meta->bytes<=dataEnd){
-                if(index==count){
-                    goto valueFound;
-                }
-                current+=meta->bytes;
-                count+=1;
-            }
-            current=dataStart;
-        }
-        while(current<=meta->last){
-            if(index==count){
-                goto valueFound;
-            }
-            count+=1;
-            current+=meta->bytes;
-        }
-    }
-    ret.type=TYPE_NONE;
-    return ret;
-valueFound:
-    if(meta==int16Meta){
-        ret.type=TYPE_UINT16;
-        ret.value.int16Val=*(uint16_t*)current;
-    }else if(meta==int32Meta){
-        ret.type=TYPE_INT32;
-        ret.value.int32Val=*(int32_t*)current;
-    }else{
-        ret.type=TYPE_FLOAT;
-        ret.value.floatVal=*(float*)current;
-    }
-    return ret;
-}
-
-
-int CircBuffer::getElementCount(){
-    init();
-    TypeMeta* meta = int16Meta;
-    TypeMeta *metaList[]={int16Meta,int32Meta,floatMeta};
-    int count=0;
-    for(int i=0;i<3;i++){
-        meta = metaList[i];
-        if(meta==NULL){
-            continue;
-        }
-        uint8_t* current = meta->start;
-        if(meta->last < meta->start){
-            while(current+meta->bytes<=dataEnd){
-                count+=1;
-                current+=meta->bytes;
-            }
-            current=dataStart;
-        }
-        while(current<=meta->last){
-            count+=1;
-            current+=meta->bytes;
-        }
-    }
-    return count;
-}
 
 // //
 // /**
 // * returns the number of elements of a provided type stored in the buffer
 // */
-// int CircBuffer::_countSection(TypeMeta*meta){
+// int MicroBitCircularBuffer::_countSection(TypeMeta*meta){
 //     if(meta==NULL){
 //         return 0;
 //     }
@@ -374,7 +423,7 @@ int CircBuffer::getElementCount(){
 //     return count;
 // }
 
-// returnedBufferElem CircBuffer::getElem(int index){
+// returnedBufferElem MicroBitCircularBuffer::getElem(int index){
 //     TypeMeta *meta = int16Meta;
 //     int count =0;
 //     returnedBufferElem ret;
@@ -435,7 +484,7 @@ int CircBuffer::getElementCount(){
 // /**
 // * returns the string representation of the nth element in the buffer
 // */
-// ManagedString CircBuffer::getElem(int index){
+// ManagedString MicroBitCircularBuffer::getElem(int index){
 //     int int16Entries = _countSection(int16Meta);
 //     int int32Entries = _countSection(int32Meta);
 //     int floatEntries = _countSection(floatMeta);
@@ -517,7 +566,7 @@ int CircBuffer::getElementCount(){
 * returns the start address of the n'th element in a region of the buffer
 * special case for -1, the newest element in the region
 */
-// uint8_t* CircBuffer::_getElemIndex(TypeMeta* meta, int index){
+// uint8_t* MicroBitCircularBuffer::_getElemIndex(TypeMeta* meta, int index){
 //     if(meta==NULL){
 //         return NULL;
 //     }

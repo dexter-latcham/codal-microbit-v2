@@ -5,7 +5,6 @@
 #define MICROBIT_FASTLOG_STATUS_INITIALIZED     0x0001
 #define MICROBIT_FASTLOG_STATUS_ROW_STARTED     0x0002
 
-
 #include "stdint.h"
 #include "ManagedString.h"
 namespace codal
@@ -18,14 +17,14 @@ enum ValueType {
     TYPE_FLOAT=3
 };
 
-typedef struct returnedBufferElem{
+typedef struct circBufferElem{
     ValueType type;
     union value{
         float floatVal;
         int32_t int32Val;
         uint16_t int16Val;
     }value;
-}returnedBufferElem;
+}circBufferElem;
 
 typedef struct {
     uint8_t* start;
@@ -34,7 +33,7 @@ typedef struct {
     int bytes;
 }TypeMeta;
 
-class CircBuffer {
+class MicroBitCircularBuffer {
 
 private:
     bool full;
@@ -46,9 +45,8 @@ private:
     TypeMeta* int32Meta;
     TypeMeta* floatMeta;
 public:
-    CircBuffer(int size);
-
-    ~CircBuffer();
+    MicroBitCircularBuffer(int size);
+    ~MicroBitCircularBuffer();
 
     /**
      * Initializes the data buffer.
@@ -56,15 +54,25 @@ public:
     void init();
 
 
-    void logVal(int value);
-    void logVal(uint16_t value);
-    void logVal(int32_t value);
-    void logVal(float value);
-    void logVal(double value);
+    void push(int value);
+    void push(double value);
+
+    void push(uint16_t value);
+    void push(int32_t value);
+    void push(float value);
 
 
-    int getElementCount();
-    returnedBufferElem getElem(int index);
+    int count();
+
+    /**
+    * get at an index
+    */
+    circBufferElem get(int index);
+
+    /**
+    * get and remove oldest element
+    */
+    circBufferElem pop();
 
 private:
     uint8_t* _getNextWriteLoc(TypeMeta* meta);
