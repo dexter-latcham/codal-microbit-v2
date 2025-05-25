@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <script language="javascript" type="text/javascript" src="./logBt.js"></script>
+    <script src="graphHandler.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        #connect {
+            background-color: red;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        #chartContainer {
+            width: 100vw;
+            height: 80vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+        <meta charset="UTF-8">
+        <title>Microbit Bluetooth Log</title>
+    </head>
+    <body>
+        <h1>Microbit Bluetooth Log Viewer</h1>
+        <button id="connectBtn">Connect to Microbit</button>
+        <table id="logTable" border="1">
+            <thead>
+                <tr id="headerRow"></tr>
+            </thead>
+            <tbody id="dataBody"></tbody>
+        </table>
+        <div id="chartContainer">
+            <canvas id="dataChart" style="display: none;"></canvas>
+        </div>
+
+        <script>
+
+        var lh = new btLog();
+
+        let graphthing = new graph();
+        function updateGraphfunc(){
+            graphthing.updateGraph(lh.headers,lh.data);
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            lh.connectToDevice();
+        })
+
+        let currentHeaders=[]
+        function updateTable() {
+            const headers = lh.headers;
+            const data = lh.data;
+
+            const headerRow = document.getElementById('headerRow');
+            const dataBody = document.getElementById('dataBody');
+
+            const headersChanged = headers.length !== currentHeaders.length;
+
+            if (headersChanged) {
+
+                currentHeaders = [...headers];
+
+                headerRow.innerHTML = '';
+                currentHeaders.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+
+            }
+            dataBody.innerHTML = '';
+
+            if (data && data.length > 0) {
+                data.forEach(rowData => {
+                    const row = document.createElement('tr');
+                    rowData.forEach(cell => {
+                        const td = document.createElement('td');
+                        if (!isNaN(cell) && cell !== null && cell !== '') {
+                            td.textContent = Number(cell).toPrecision(5);
+                        }else{
+                            td.textContent = cell;
+                        }
+                        row.appendChild(td);
+                    });
+                    dataBody.appendChild(row);
+                });
+            }
+        }
+        setInterval(updateTable, 1000);
+        setInterval(updateGraphfunc, 1000);
+
+        </script>
+    </body>
+</html>
