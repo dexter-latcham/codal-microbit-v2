@@ -10,17 +10,11 @@
 namespace codal
 {
 
-
-
-#define MICROBIT_FASTLOG_TYPE_COUNT 6
 enum ValueType {
-    TYPE_NONE=-1,
-    TYPE_UINT8 =0,
-    TYPE_UINT16 =1,
-    TYPE_INT16 =2,
-    TYPE_UINT32 =3,
-    TYPE_INT32 =4,
-    TYPE_FLOAT=5
+    TYPE_NONE=0,
+    TYPE_UINT16 = 1,
+    TYPE_INT32 =2,
+    TYPE_FLOAT=3
 };
 
 typedef struct circBufferElem{
@@ -28,7 +22,7 @@ typedef struct circBufferElem{
     union value{
         float floatVal;
         int32_t int32Val;
-        uint32_t uint32Val;
+        uint16_t int16Val;
     }value;
 }circBufferElem;
 
@@ -47,9 +41,9 @@ private:
     uint32_t status;          // 0 = uninitialized, 1 = initialized
     uint8_t* dataStart;         // Pointer to raw data block
     uint8_t* dataEnd;
-    TypeMeta* typeMetas[MICROBIT_FASTLOG_TYPE_COUNT];
-    ValueType globalType;
-
+    TypeMeta* int16Meta;
+    TypeMeta* int32Meta;
+    TypeMeta* floatMeta;
 public:
     MicroBitCircularBuffer(int size);
     ~MicroBitCircularBuffer();
@@ -60,19 +54,11 @@ public:
     void init();
 
 
+    void push(int value);
     void push(double value);
 
-
-
-    void push(int value);
-    void push(unsigned int value);
-
-    void push(uint8_t value);
     void push(uint16_t value);
-    void push(int16_t value);
-    void push(uint32_t value);
     void push(int32_t value);
-
     void push(float value);
 
 
@@ -89,11 +75,13 @@ public:
     circBufferElem pop();
 
 private:
-    void _clearRegion(ValueType type, uint8_t* from, uint8_t* to);
-    void _logData(ValueType type,uint8_t* data);
+    uint8_t* _getNextWriteLoc(TypeMeta* meta);
+    void _clearRegion(TypeMeta** metaPtr, uint8_t* from, uint8_t* to);
+    void _logData(TypeMeta ** meta,uint8_t* data);
 
 
     // uint8_t* _getElemIndex(TypeMeta* meta,int index);
 };
+
 }
 #endif

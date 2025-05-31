@@ -74,6 +74,8 @@ void MicroBitFastLog::init(){
     if(logger==NULL){
         logger = new MicroBitCircularBuffer(1000);
     }
+
+    logStartTime = system_timer_current_time();
     status |= MICROBIT_FASTLOG_STATUS_INITIALIZED;
 
 }
@@ -157,24 +159,22 @@ void MicroBitFastLog::endRow(){
 
     if(status & MICROBIT_FASTLOG_TIMESTAMP_ENABLED){
         CODAL_TIMESTAMP t = system_timer_current_time();
-        if(logStartTime==0){
-            logStartTime=t;
-            logger->push(0);
-        }else{
-            CODAL_TIMESTAMP timeDiff = t - logStartTime;
-            int msTime = (timeDiff % (CODAL_TIMESTAMP) 1000000000);
-            logger->push(msTime);
-        }
+        CODAL_TIMESTAMP timeDiff = t - logStartTime;
+        int msTime = (timeDiff % (CODAL_TIMESTAMP) 1000000000);
+        logger->push(msTime);
     }
     for(int i=0;i<columnCount;i++){
-        if(rowData[i].type==TYPE_UINT16){
-            logger->push((uint16_t)rowData[i].value.int16Val);
+        if(rowData[i].type==TYPE_UINT32){
+            unsigned int val = rowData[i].value.uint32Val;
+            logger->push(val);
         }else if(rowData[i].type==TYPE_INT32){
-            logger->push((int32_t)rowData[i].value.int32Val);
+            int val = rowData[i].value.int32Val;
+            logger->push(val);
+            // logger->push((int32_t)rowData[i].value.int32Val);
         }else if(rowData[i].type==TYPE_FLOAT){
             logger->push((float)rowData[i].value.floatVal);
         }else{
-            logger->push((uint16_t)0);
+            logger->push(0);
         }
     }
     status &= ~MICROBIT_FASTLOG_STATUS_ROW_STARTED;
@@ -185,11 +185,8 @@ void MicroBitFastLog::endRow(){
 void MicroBitFastLog::logData(const char *key, int value) {
     return logData(ManagedString(key), value);
 }
-void MicroBitFastLog::logData(const char *key, uint16_t value) {
-    return logData(ManagedString(key), value);
-}
 
-void MicroBitFastLog::logData(const char *key, int32_t value) {
+void MicroBitFastLog::logData(const char *key, unsigned int value) {
     return logData(ManagedString(key), value);
 }
 void MicroBitFastLog::logData(const char *key, float value) {
@@ -201,26 +198,26 @@ void MicroBitFastLog::logData(const char *key, double value) {
 }
 
 void MicroBitFastLog::logData(ManagedString key, int value) {
-    if(value >=0 && value < 65535){
-        return logData(key, (uint16_t) value);
-    }else if(value >= INT32_MIN && value <= INT32_MAX){
-        return logData(key, (int32_t) value);
+    if(value <0){
+        int32_t val = (int32_t)value;
+        return _storeValue(key,TYPE_INT32,&val);
     }else{
-        return logData(key, (float) value);
+        uint32_t val = (uint32_t)value;
+        return _storeValue(key,TYPE_UINT32,&val);
     }
 }
 
-void MicroBitFastLog::logData(ManagedString key, uint16_t value){
-    _storeValue(key,TYPE_UINT16,&value);
+void MicroBitFastLog::logData(ManagedString key, unsigned int value) {
+    uint32_t val = (uint32_t)value;
+    return _storeValue(key,TYPE_UINT32,&val);
 }
-void MicroBitFastLog::logData(ManagedString key, int32_t value){
-    _storeValue(key,TYPE_INT32,&value);
-}
-void MicroBitFastLog::logData(ManagedString key, double value){
-    logData(key,(float)value);
-}
+
 void MicroBitFastLog::logData(ManagedString key, float value){
     _storeValue(key,TYPE_FLOAT,&value);
+}
+
+void MicroBitFastLog::logData(ManagedString key, double value){
+    logData(key,(float)value);
 }
 
 
@@ -229,15 +226,14 @@ void MicroBitFastLog::_storeValue(ManagedString key, ValueType type, void* addr)
     if (!(status & MICROBIT_FASTLOG_STATUS_ROW_STARTED)){
         beginRow();
     }
-
     for(int i=0;i<columnCount;i++){
         if(rowData[i].key==ManagedString::EmptyString){
             rowData[i].key=key;
         }
         if(rowData[i].key==key){
             rowData[i].type=type;
-            if(type==TYPE_UINT16){
-                rowData[i].value.int16Val=*(uint16_t*)addr;
+            if(type==TYPE_UINT32){
+                rowData[i].value.uint32Val=*(uint32_t*)addr;
             }else if(type == TYPE_INT32){
                 rowData[i].value.int32Val=*(int32_t*)addr;
             }else{
@@ -268,8 +264,8 @@ void MicroBitFastLog::_storeValue(ManagedString key, ValueType type, void* addr)
             free(rowData);
             newRowData[columnCount].key=key;
             newRowData[columnCount].type=type;
-            if(type==TYPE_UINT16){
-                newRowData[columnCount].value.int16Val=*(uint16_t*)addr;
+            if(type==TYPE_UINT32){
+                newRowData[columnCount].value.uint32Val=*(uint32_t*)addr;
             }else if(type == TYPE_INT32){
                 newRowData[columnCount].value.int32Val=*(int32_t*)addr;
             }else{
@@ -300,11 +296,11 @@ static ManagedString floatToStr(float num){
     return ret;
 }
 static ManagedString _bufferRetToString(circBufferElem ret){
-    if(ret.type == TYPE_UINT16){
-        int intVal = (int)ret.value.int16Val;
-        return ManagedString(intVal);
-    }else if(ret.type == TYPE_INT32){
+    if(ret.type == TYPE_INT32){
         int intVal = (int)ret.value.int32Val;
+        return ManagedString(intVal);
+    }else if(ret.type == TYPE_UINT32){
+        int intVal = (int)ret.value.uint32Val;
         return ManagedString(intVal);
     }else if(ret.type == TYPE_FLOAT){
         ManagedString floatStr=floatToStr(ret.value.floatVal);
@@ -413,8 +409,8 @@ void MicroBitFastLog::saveLog(){
         if(status & MICROBIT_FASTLOG_TIMESTAMP_ENABLED){
             elem = logger->pop();
             if(timeStampFormat != TimeStampFormat::None){
-                if(elem.type == TYPE_UINT16){
-                     timeOffset= (int)elem.value.int16Val;
+                if(elem.type == TYPE_UINT32){
+                     timeOffset= (int)elem.value.uint32Val;
                 }else if(elem.type == TYPE_INT32){
                      timeOffset= (int)elem.value.int32Val;
                 }else if(elem.type == TYPE_FLOAT){
@@ -491,3 +487,29 @@ void MicroBitFastLog::saveLog(){
 
 
 
+
+// void MicroBitFastLog::logData(const char *key, uint16_t value) {
+//     return logData(ManagedString(key), value);
+// }
+
+// void MicroBitFastLog::logData(const char *key, int32_t value) {
+//     return logData(ManagedString(key), value);
+// }
+
+
+// void MicroBitFastLog::logData(const char *key, double value) {
+//     return logData(ManagedString(key), (float)value);
+// }
+
+// void MicroBitFastLog::logData(ManagedString key, uint16_t value){
+//     uint32_t value32 = (uint32_t)value;
+//     _storeValue(key,TYPE_UINT32,&value32);
+// }
+
+// void MicroBitFastLog::logData(ManagedString key, int32_t value){
+//     _storeValue(key,TYPE_INT32,&value);
+// }
+
+// void MicroBitFastLog::logData(ManagedString key, double value){
+//     logData(key,(float)value);
+// }

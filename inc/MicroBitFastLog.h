@@ -29,7 +29,7 @@ class LogColumnEntry
     union value{
         float floatVal;
         int32_t int32Val;
-        uint16_t int16Val;
+        uint32_t uint32Val;
     }value;
 };
 
@@ -55,25 +55,31 @@ class MicroBitFastLog{
 
 
 
+
+    void logData(const char *key, unsigned int value);
+    void logData(ManagedString key, unsigned int value);
+
     void logData(const char *key, int value);
     void logData(ManagedString key, int value);
-
-
-    void logData(const char *key, double value);
-    void logData(ManagedString key, double value);
-
-    void logData(const char *key, uint16_t value);
-    void logData(ManagedString key, uint16_t value);
-
-    void logData(const char *key, int32_t value);
-    void logData(ManagedString key, int32_t value);
 
     void logData(const char *key, float value);
     void logData(ManagedString key, float value);
 
+    void logData(const char *key, double value);
+    void logData(ManagedString key, double value);
+
     void saveLog();
 
     void setTimeStamp(TimeStampFormat format);
+
+private:
+    void init();
+    void _storeValue(ManagedString key, ValueType type, void* addr);
+};
+
+
+}
+#endif
 
     // ManagedString getHeaders();
 
@@ -83,11 +89,17 @@ class MicroBitFastLog{
     // uint16_t getNumberOfRows();
 
     // uint16_t getNumberOfHeaders();
-private:
-    void init();
-    void _storeValue(ManagedString key, ValueType type, void* addr);
-};
+//
 
+    // void logData(const char *key, double value);
+    // void logData(ManagedString key, double value);
 
-}
-#endif
+    // void logData(const char *key, uint16_t value);
+    // void logData(ManagedString key, uint16_t value);
+
+    // void logData(const char *key, int32_t value);
+    // void logData(ManagedString key, int32_t value);
+
+    // void logData(const char *key, float value);
+    // void logData(ManagedString key, float value);
+
