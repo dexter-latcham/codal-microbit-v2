@@ -194,13 +194,9 @@ class btLog{
         const rowCountBytes = await this.characteristics.ROWCOUNT.readValue();
         let rowCount = rowCountBytes.getUint16(0, true);
         let returnedRows=[];
-        console.log(rowCount+" : rows to get")
         for(let i=0;i<rowCount;i++){
-            console.log("getting row : "+i);
             let rowN = await this.getRow(i);
-            console.log(rowN);
             if(rowN.length!=0){
-                console.log("got row :"+i)
                 returnedRows.push(rowN);
             }
         }
@@ -216,20 +212,16 @@ class btLog{
 
     async onConnected(){
 
-        console.log("getting headers");
         const countValue = await this.characteristics.HEADERCOUNT.readValue();
         this.headerCount = countValue.getUint16(0, true);
         for(let i=0;i<this.headerCount;i++){
             this.headers.push(await this.getHeader(i));
         }
-        console.log("got headers");
         this.characteristics.HEADERCOUNT.startNotifications();
         this.characteristics.HEADERCOUNT.addEventListener('characteristicvaluechanged',this.handleHeaderCount.bind(this));
 
-        console.log("getting stored rows");
         await this.getStoredRows()
 
-        console.log("got stored rows");
         this.enableLiveRows()
     }
 
