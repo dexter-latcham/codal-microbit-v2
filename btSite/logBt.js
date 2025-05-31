@@ -31,6 +31,7 @@ for (const [key, shortUUID] of Object.entries(charUUIDMin)) {
 
 class btLog{
     constructor(){
+        this.name = "Microbit";
         this.connected = false;
 
         this.onConnectCallback=function(){};
@@ -43,6 +44,30 @@ class btLog{
         this.data=[];
 
         this.rowBuffer="";
+        this.isUpdatingHeaders=false;
+        setInterval(async () => {
+            if (this.isUpdatingHeaders) return; // prevent overlapping calls
+            this.isUpdatingHeaders = true;
+
+            try {
+                await this.updateHeaders();
+            } catch (error) {
+                console.error("Failed to update headers:", error);
+            } finally {
+                this.isUpdatingHeaders = false;
+            }
+        }, 1000); // every 1000ms (1 second)
+    }
+    getName(){
+        return this.name;
+    }
+
+    async updateHeaders(){
+        if(this.headerCount!=this.headers.length){
+            for(let i=this.headers.length-1;i<this.headerCount;i++){
+                this.headers.push(await this.getHeader(i));
+            }
+        }
     }
 
     onConnect(callbackFunction){
@@ -102,7 +127,10 @@ class btLog{
             const view = new DataView(buffer);
             view.setUint16(0, number, true);
 
-            await char.startNotifications();
+            if (!char._notificationsStarted) {
+                await char.startNotifications();
+                char._notificationsStarted = true;
+            }
             return await new Promise((resolve, reject) => {
                 let accumulated = '';
                 const decoder = new TextDecoder('utf-8');
@@ -113,12 +141,11 @@ class btLog{
                     accumulated += chunk;
                     if (chunk.includes('\n')) {
                         char.removeEventListener('characteristicvaluechanged', handler);
-                        resolve(accumulated.replace(/\n/g, ''));
+                        let row = accumulated.replace(/\n/g, '').trim()
+                        resolve(row);
                     }
                 };
-
                 char.addEventListener('characteristicvaluechanged', handler);
-
                 char.writeValue(buffer).catch(error => {
                     char.removeEventListener('characteristicvaluechanged', handler);
                     reject(error);
@@ -137,12 +164,7 @@ class btLog{
     async handleHeaderCount(event){
         const value = event.target.value;
         let newHeaderCount = value.getUint16(0,true);
-        if(newHeaderCount=this.headerCount){
-            for(let i=this.headerCount;i<newHeaderCount;i++){
-                this.headers.push(await this.getHeader(i));
-            }
-            this.headerCount=newHeaderCount;
-        }
+        this.headerCount=newHeaderCount;
     }
 
     async handleNewRow(event) {
@@ -168,14 +190,17 @@ class btLog{
         return rowCount
     }
 
-
     async getStoredRows(){
         const rowCountBytes = await this.characteristics.ROWCOUNT.readValue();
         let rowCount = rowCountBytes.getUint16(0, true);
         let returnedRows=[];
+        console.log(rowCount+" : rows to get")
         for(let i=0;i<rowCount;i++){
+            console.log("getting row : "+i);
             let rowN = await this.getRow(i);
+            console.log(rowN);
             if(rowN.length!=0){
+                console.log("got row :"+i)
                 returnedRows.push(rowN);
             }
         }
@@ -190,15 +215,21 @@ class btLog{
     }
 
     async onConnected(){
+
+        console.log("getting headers");
         const countValue = await this.characteristics.HEADERCOUNT.readValue();
         this.headerCount = countValue.getUint16(0, true);
         for(let i=0;i<this.headerCount;i++){
             this.headers.push(await this.getHeader(i));
         }
+        console.log("got headers");
         this.characteristics.HEADERCOUNT.startNotifications();
         this.characteristics.HEADERCOUNT.addEventListener('characteristicvaluechanged',this.handleHeaderCount.bind(this));
 
+        console.log("getting stored rows");
         await this.getStoredRows()
+
+        console.log("got stored rows");
         this.enableLiveRows()
     }
 
@@ -212,6 +243,11 @@ class btLog{
         };
         options.optionalServices = [CUSTOM_SRV];
         let device = await navigator.bluetooth.requestDevice(options);
+
+        this.name=device.name;
+        if (this.name.startsWith("BBC micro:bit")) {
+          this.name = this.name.slice("BBC micro:bit".length).trimStart();
+        }
 
         device.addEventListener('gattserverdisconnected', this.onDisconnected);
 

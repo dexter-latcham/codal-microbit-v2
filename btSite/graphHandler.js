@@ -1,3 +1,137 @@
+class basicLinePlot {
+    constructor() {
+        this.handlers=[];
+        this.headersList=[];
+        this.headers = ["time"];
+        this.data = [];
+        this.dataParsedUpto=[];
+
+        document.getElementById("dataChart").style.display="block";
+        let ctx = document.getElementById("dataChart").getContext("2d");
+        this.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: this._initDatasets()
+            },
+            options: {
+                responsive: true,
+                parsing: false,
+                spanGaps: false, // keep gaps for missing values
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Values'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    _randomColor() {
+        const r = Math.floor(Math.random() * 200);
+        const g = Math.floor(Math.random() * 200);
+        const b = Math.floor(Math.random() * 200);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+    _initDatasets() {
+        return this.headers.slice(1).map((header,index) => ({
+            label: header,
+            data: [],
+            borderWidth: 2,
+            borderColor: this._randomColor(),
+            fill: false
+        }));
+    }
+
+
+    _updateChartDatasets() {
+        this.chart.data.datasets.forEach(ds => ds.data = []);
+
+        for (let col = 1; col < this.headers.length; col++) {
+            const dataset = this.chart.data.datasets[col - 1];
+            dataset.data = this.data
+            .filter(row => row[col] !== undefined && row[col] !== null)
+            .map(row => ({ x: row[0], y: row[col] }));
+        }
+        this.chart.update();
+    }
+
+    addDevice(device){
+        this.handlers.push(device);
+        this.dataParsedUpto.push(0);
+        this.headersList.push([]);
+    }
+
+    checkHeaders(){
+        for(let i=0;i<this.handlers.length;i++){
+            let correctHeaders=this.handlers[i].headers;
+            for(let headerI=1;headerI<correctHeaders.length;headerI++){
+                let headerName = this.handlers[i].getName()+correctHeaders[headerI];
+                if(!(this.headers.includes(headerName))){
+                    this.headers.push(headerName);
+                    this.headersList[i].push(headerName);
+                    const newColIndex = this.headers.length - 1;
+                    this.data = this.data.map(row => {
+                        const newRow = [...row];
+                        newRow[newColIndex] = undefined;
+                        return newRow;
+                    });
+                    this.chart.data.datasets.push({
+                        label: headerName,
+                        data: [],
+                        borderColor: this._randomColor(),
+                        borderWidth: 2,
+                        fill: false
+                    });
+                }
+            }
+        }
+    }
+
+    update(){
+        if(this.handlers.length==0){
+            return;
+        }
+
+        this.checkHeaders();
+        for(let i=0;i<this.handlers.length;i++){
+            let rowsToAdd = this.handlers[i].data.slice(this.dataParsedUpto[i]);
+            this.dataParsedUpto[i]=this.handlers[i].data.length;
+            if(rowsToAdd.length!=0){
+                for(let rowIndex=0;rowIndex<rowsToAdd.length;rowIndex++){
+                    let row = rowsToAdd[rowIndex];
+                    if((row.length!=0) && (!(isNaN(Number(row[0]))))){
+                        let newRow=[Number(row.shift())]
+                        for(let headerIndex=1;headerIndex<this.headers.length;headerIndex++){
+                            let toPush = NaN;
+                            if(this.headersList[i].includes(this.headers[headerIndex])){
+                                toPush = Number(row.shift());
+                            }
+                            if(!isNaN(toPush)){
+                                newRow.push(toPush);
+                            }else{
+                                newRow.push(undefined);
+                            }
+                        }
+                        this.data.push(newRow);
+                    }
+                }
+            }
+        }
+        this.data.sort((a, b) => a[0] - b[0]); // Sort by timestamp
+        this._updateChartDatasets();
+    }
+}
+
 class graph{
     constructor(){
         this.graphInstance;

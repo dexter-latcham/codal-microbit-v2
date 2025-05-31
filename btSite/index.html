@@ -21,14 +21,56 @@
         }
         #chartContainer {
             width: 100vw;
-            height: 80vh;
+            height: 60vh;
             display: flex;
             justify-content: center;
             align-items: center;
         }
+        #topControls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 20px;
+        }
+
+        #deviceListContainer {
+            text-align: left;
+        }
+        #deviceList li {
+            margin: 5px;
+            list-style-type: none;
+        }
+        #deviceList li:hover {
+            text-decoration: underline;
+        }
         canvas {
             width: 100%;
             height: 100%;
+        }
+        #tablesContainer {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .device-table-container {
+            border: 1px solid black;
+            padding: 10px;
+            overflow-x: auto;
+        }
+
+        table {
+            border-collapse: collapse;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+        }
+
+        th, td {
+            padding: 5px 10px;
         }
     </style>
         <meta charset="UTF-8">
@@ -36,73 +78,150 @@
     </head>
     <body>
         <h1>Microbit Bluetooth Log Viewer</h1>
-        <button id="connectBtn">Connect to Microbit</button>
-        <table id="logTable" border="1">
-            <thead>
-                <tr id="headerRow"></tr>
-            </thead>
-            <tbody id="dataBody"></tbody>
-        </table>
+        <div id="topControls">
+            <button id="connectBtn">Add new Microbit</button>
+            <div id="deviceListContainer">
+                <h3>Connected Devices:</h3>
+                <ul id="deviceList"></ul>
+            </div>
+        </div>
+
         <div id="chartContainer">
             <canvas id="dataChart" style="display: none;"></canvas>
         </div>
+        <div id="tablesContainer" style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;"></div>
+
 
         <script>
 
-        var lh = new btLog();
+        const connectedDevices = [];
+        const tableInstances=[];
+        let graphTest = new basicLinePlot();
 
-        let graphthing = new graph();
-        function updateGraphfunc(){
-            graphthing.updateGraph(lh.headers,lh.data);
+        function updateDeviceList() {
+            const list = document.getElementById('deviceList');
+            list.innerHTML = '';
+            connectedDevices.forEach((dev, index) => {
+                const li = document.createElement('li');
+                li.textContent ="Micro:Bit: "+dev.getName();
+                li.style.cursor = 'pointer';
+                li.style.fontWeight = 'normal';
+                li.onclick = () => {
+                    updateDeviceList();
+                };
+                list.appendChild(li);
+            });
         }
 
         document.getElementById('connectBtn').addEventListener('click', async () => {
-            lh.connectToDevice();
-        })
+            console.log("creating log")
+            const lh = new btLog();
 
-        let currentHeaders=[]
-        function updateTable() {
-            const headers = lh.headers;
-            const data = lh.data;
-
-            const headerRow = document.getElementById('headerRow');
-            const dataBody = document.getElementById('dataBody');
-
-            const headersChanged = headers.length !== currentHeaders.length;
-
-            if (headersChanged) {
-
-                currentHeaders = [...headers];
-
-                headerRow.innerHTML = '';
-                currentHeaders.forEach(header => {
-                    const th = document.createElement('th');
-                    th.textContent = header;
-                    headerRow.appendChild(th);
-                });
-
+            console.log("log created")
+            try {
+                await lh.connectToDevice();
+                console.log("connected\n");
+                connectedDevices.push(lh);
+                console.log("pushed");
+                const tb = new table(lh);
+                console.log("new table");
+                tableInstances.push(tb);
+                console.log("updating device list");
+                updateDeviceList();
+                graphTest.addDevice(lh);
+            } catch (e) {
+                console.error("Failed to connect device", e);
             }
-            dataBody.innerHTML = '';
+        });
 
-            if (data && data.length > 0) {
-                data.forEach(rowData => {
-                    const row = document.createElement('tr');
-                    rowData.forEach(cell => {
-                        const td = document.createElement('td');
-                        if (!isNaN(cell) && cell !== null && cell !== '') {
-                            td.textContent = Number(cell).toPrecision(5);
-                        }else{
-                            td.textContent = cell;
-                        }
-                        row.appendChild(td);
+        class table{
+            constructor(microbitInstance){
+
+                this.currentHeaders=[];
+                this.instance=microbitInstance;
+
+                this.element = document.createElement('div');
+                this.element.className = "device-table-container";
+
+                this.table = document.createElement('table');
+
+                const caption = document.createElement('caption');
+                caption.textContent = microbitInstance.getName();
+                this.table.appendChild(caption);
+
+                this.headerRow = document.createElement('tr');
+                const thead = document.createElement('thead');
+                thead.appendChild(this.headerRow);
+
+                this.dataBody = document.createElement('tbody');
+
+                this.table.appendChild(thead);
+                this.table.appendChild(this.dataBody);
+                this.element.appendChild(this.table);
+
+                document.getElementById('tablesContainer').appendChild(this.element);
+            }
+
+            updateTable() {
+                const headers = this.instance.headers;
+                const data = this.instance.data;
+
+                const headersChanged = headers.length !== this.currentHeaders.length;
+
+                if (headersChanged) {
+                    this.currentHeaders = [...headers];
+                    this.headerRow.innerHTML = '';
+                    this.currentHeaders.forEach(header => {
+                        const th = document.createElement('th');
+                        th.textContent = header;
+                        this.headerRow.appendChild(th);
                     });
-                    dataBody.appendChild(row);
-                });
+
+                }
+                this.dataBody.innerHTML = '';
+                if (data && data.length > 0) {
+                    data.forEach(rowData => {
+                        const row = document.createElement('tr');
+                        rowData.forEach(cell => {
+                            const td = document.createElement('td');
+                            if (!isNaN(cell) && cell !== null && cell !== '') {
+                                td.textContent = Number(cell).toPrecision(5);
+                            }else{
+                                td.textContent = cell;
+                            }
+                            row.appendChild(td);
+                        });
+                        this.dataBody.appendChild(row);
+                    });
+                }
             }
         }
-        setInterval(updateTable, 1000);
-        setInterval(updateGraphfunc, 1000);
+        function updateTables(){
+            graphTest.update();
+            for(let i=0;i<tableInstances.length;i++){
+                tableInstances[i].updateTable();
+            }
+        }
+        setInterval(updateTables, 1000);
 
         </script>
     </body>
 </html>
+
+        <!-- setInterval(updateGraphfunc, 1000); -->
+        <!-- let graphthing = new graph(); -->
+
+        <!-- function updateGraphfunc(){ -->
+        <!--     if (selectedDeviceIndex >= 0) { -->
+        <!--         const device = connectedDevices[selectedDeviceIndex]; -->
+        <!--         graphthing.updateGraph(device.headers, device.data); -->
+        <!--     } -->
+        <!-- } -->
+
+
+        <!-- <table id="logTable" border="1"> -->
+        <!--     <thead> -->
+        <!--         <tr id="headerRow"></tr> -->
+        <!--     </thead> -->
+        <!--     <tbody id="dataBody"></tbody> -->
+        <!-- </table> -->
