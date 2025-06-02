@@ -1,48 +1,72 @@
 #include "MicroBitCircularBuffer.h"
 #include "stdint.h"
 using namespace codal;
+MicroBitCircularBuffer::MicroBitCircularBuffer() {
+    this->maxBufferSize=-1;
+    this->status = 0;
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_MAX_DATA_BUFFERS;i++){
+        this->dataBuffers[i]=NULL;
+    }
+    this->globalType=TYPE_NONE;
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;i++){
+        typeMetas[i]=NULL;
+    }
+}
 
 MicroBitCircularBuffer::MicroBitCircularBuffer(int size) {
-    if(size <= 8){
-        //bad size, too small
-        size=10;
-    }
-    this->maxByteSize=size;
+    this->maxBufferSize=size;
     this->status = 0;
-    this->dataStart = NULL; //void* holding data
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_MAX_DATA_BUFFERS;i++){
+        this->dataBuffers[i]=NULL;
+    }
     this->globalType=TYPE_NONE;
-    for(int i=0;i<MICROBIT_FASTLOG_TYPE_COUNT;i++){
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;i++){
         typeMetas[i]=NULL;
     }
 }
 
 MicroBitCircularBuffer::~MicroBitCircularBuffer(){
-    for(int i=0;i<MICROBIT_FASTLOG_TYPE_COUNT;i++){
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;i++){
         if(typeMetas[i]!=NULL){
             free(typeMetas[i]);
             typeMetas[i]=NULL;
         }
     }
-    if(dataStart!=NULL){
-        free(dataStart);
-        dataStart=NULL;
+
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_MAX_DATA_BUFFERS;i++){
+        if(dataBuffers[i]!=NULL){
+            free(dataBuffers[i]);
+            dataBuffers[i]=NULL;
+        }
     }
 }
+
 
 void MicroBitCircularBuffer::init() {
-    if (status & MICROBIT_FASTLOG_STATUS_INITIALIZED){
+    if (status & MICROBIT_CIRCULAR_BUFFER_STATUS_INITIALIZED){
         return;
     }
-    dataStart = (uint8_t*)malloc(maxByteSize);
-    if (dataStart == NULL) {
+    int toAlloc=MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+    if(maxBufferSize!=-1){
+        if(maxBufferSize<toAlloc){
+            toAlloc=maxBufferSize;
+        }
+    }
+    dataBuffers[0] = (uint8_t*)malloc(toAlloc);
+    if (dataBuffers[0] == NULL) {
         return;
     }
-    dataEnd = dataStart+maxByteSize;
-    status |= MICROBIT_FASTLOG_STATUS_INITIALIZED;
+    allocatedBuffers=1;
+    currentByteMax=toAlloc;
+    status |= MICROBIT_CIRCULAR_BUFFER_STATUS_INITIALIZED;
 }
 
-
-
+TypeMeta* _createTypeRegion(int typeSize){
+    TypeMeta* ret =(TypeMeta*)malloc(sizeof(TypeMeta));
+    ret->start=-1;
+    ret->bytes=typeSize;
+    return ret;
+}
 
 void MicroBitCircularBuffer::push(uint8_t val) {
     if(globalType>TYPE_UINT8){
@@ -50,14 +74,11 @@ void MicroBitCircularBuffer::push(uint8_t val) {
         return push(valNew);
     }
     if(globalType<TYPE_UINT8){
-        typeMetas[TYPE_UINT8]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_UINT8]->start=NULL;
-        typeMetas[TYPE_UINT8]->bytes=sizeof(uint8_t);
+        typeMetas[TYPE_UINT8]=_createTypeRegion(sizeof(uint8_t));
         globalType=TYPE_UINT8;
     }
     _logData(TYPE_UINT8,(uint8_t*)&val);
 }
-
 
 
 void MicroBitCircularBuffer::push(unsigned int val) {
@@ -69,14 +90,14 @@ void MicroBitCircularBuffer::push(unsigned int val) {
         return push(newVal);
     }else{
         uint32_t newVal = (uint32_t) val;
-        return push(newVal);
+        return pushu32(newVal);
     }
 }
 void MicroBitCircularBuffer::push(int val) {
     if(val <0){
         if(val < -32768){
             int32_t newVal = (int32_t) val;
-            return push(newVal);
+            return pushi32(newVal);
         }else{
             int16_t newVal = (int16_t) val;
             return push(newVal);
@@ -90,7 +111,7 @@ void MicroBitCircularBuffer::push(int val) {
             return push(newVal);
         }else{
             uint32_t newVal = (uint32_t) val;
-            return push(newVal);
+            return pushu32(newVal);
         }
     }
 }
@@ -99,16 +120,14 @@ void MicroBitCircularBuffer::push(uint16_t val) {
     if(globalType>TYPE_UINT16){
         if(val>=32767){
             uint32_t valNew = (uint32_t)val;
-            return push(valNew);
+            return pushu32(valNew);
         }else{
             int16_t valNew = (int16_t)val;
             return push(valNew);
         }
     }
     if(globalType<TYPE_UINT16){
-        typeMetas[TYPE_UINT16]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_UINT16]->start=NULL;
-        typeMetas[TYPE_UINT16]->bytes=sizeof(uint16_t);
+        typeMetas[TYPE_UINT16]=_createTypeRegion(sizeof(uint16_t));
         globalType=TYPE_UINT16;
     }
     _logData(TYPE_UINT16,(uint8_t*)&val);
@@ -118,48 +137,42 @@ void MicroBitCircularBuffer::push(int16_t val) {
     if(globalType>TYPE_INT16){
         if(val>=0){
             uint32_t valNew = (uint32_t)val;
-            return push(valNew);
+            return pushu32(valNew);
         }else{
             int32_t valNew = (int32_t)val;
-            return push(valNew);
+            return pushi32(valNew);
         }
     }
     if(globalType<TYPE_INT16){
-        typeMetas[TYPE_INT16]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_INT16]->start=NULL;
-        typeMetas[TYPE_INT16]->bytes=sizeof(int16_t);
+        typeMetas[TYPE_INT16]=_createTypeRegion(sizeof(int16_t));
         globalType=TYPE_INT16;
     }
     _logData(TYPE_INT16,(uint8_t*)&val);
 }
 
-void MicroBitCircularBuffer::push(uint32_t val) {
+void MicroBitCircularBuffer::pushu32(uint32_t val) {
     if(globalType>TYPE_UINT32){
         if(val >=2147483647){
             float valNew = (float)val;
             return push(valNew);
         }else{
             int32_t valNew = (int32_t)val;
-            return push(valNew);
+            return pushi32(valNew);
         }
     }
     if(globalType<TYPE_UINT32){
-        typeMetas[TYPE_UINT32]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_UINT32]->start=NULL;
-        typeMetas[TYPE_UINT32]->bytes=sizeof(uint32_t);
+        typeMetas[TYPE_UINT32]=_createTypeRegion(sizeof(uint32_t));
         globalType=TYPE_UINT32;
     }
     _logData(TYPE_UINT32,(uint8_t*)&val);
 }
-void MicroBitCircularBuffer::push(int32_t val) {
+void MicroBitCircularBuffer::pushi32(int32_t val) {
     if(globalType>TYPE_INT32){
         float valNew = (float)val;
         return push(valNew);
     }
     if(globalType<TYPE_INT32){
-        typeMetas[TYPE_INT32]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_INT32]->start=NULL;
-        typeMetas[TYPE_INT32]->bytes=sizeof(int32_t);
+        typeMetas[TYPE_INT32]=_createTypeRegion(sizeof(int32_t));
         globalType=TYPE_INT32;
     }
     _logData(TYPE_INT32,(uint8_t*)&val);
@@ -172,50 +185,25 @@ void MicroBitCircularBuffer::push(double val) {
 
 void MicroBitCircularBuffer::push(float val) {
     if(globalType<TYPE_FLOAT){
-        typeMetas[TYPE_FLOAT]=(TypeMeta*)malloc(sizeof(TypeMeta));
-        typeMetas[TYPE_FLOAT]->start=NULL;
-        typeMetas[TYPE_FLOAT]->bytes=sizeof(float);
+        typeMetas[TYPE_FLOAT]=_createTypeRegion(sizeof(float));
         globalType=TYPE_FLOAT;
     }
     _logData(TYPE_FLOAT,(uint8_t*)&val);
 }
 
-circBufferElem _generateRet(ValueType type, uint8_t* valPtr){
-    circBufferElem ret = {.type=TYPE_NONE};
-
-    if(type==TYPE_UINT8){
-        ret.type=TYPE_UINT32;
-        ret.value.uint32Val=*(uint8_t*)valPtr;
-    }else if(type==TYPE_UINT16){
-        ret.type=TYPE_UINT32;
-        ret.value.uint32Val=*(uint16_t*)valPtr;
-    }else if(type==TYPE_UINT32){
-        ret.type=TYPE_UINT32;
-        ret.value.uint32Val=*(uint32_t*)valPtr;
-    }else if(type==TYPE_INT16){
-        ret.type=TYPE_INT32;
-        ret.value.int32Val=*(int16_t*)valPtr;
-    }else if(type==TYPE_INT32){
-        ret.type=TYPE_INT32;
-        ret.value.uint32Val=*(int32_t*)valPtr;
-    }else if(type==TYPE_FLOAT){
-        ret.type=TYPE_FLOAT;
-        ret.value.floatVal=*(float*)valPtr;
-    }
-    return ret;
-}
 circBufferElem MicroBitCircularBuffer::pop(){
     int type=0;
-    for(type=0;type<MICROBIT_FASTLOG_TYPE_COUNT;type++){
+    for(type=0;type<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;type++){
         if(typeMetas[type]!=NULL){
-            circBufferElem ret = _generateRet((ValueType)type, typeMetas[type]->start);
+            circBufferElem ret = _getElem((ValueType)type, typeMetas[type]->start);
             if(typeMetas[type]->start == typeMetas[type]->last){
                 free(typeMetas[type]);
                 typeMetas[type]=NULL;
+
             }else{
-                uint8_t* potStart = typeMetas[type]->start+typeMetas[type]->bytes;
-                if((potStart+typeMetas[type]->bytes)>dataEnd){
-                    potStart=dataStart;
+                int potStart = typeMetas[type]->start+typeMetas[type]->bytes;
+                if((potStart+typeMetas[type]->bytes)>currentByteMax){
+                    potStart=0;
                 }
                 if(potStart < typeMetas[type]->last){
                     if((potStart+typeMetas[type]->bytes)> typeMetas[type]->last){
@@ -229,35 +217,35 @@ circBufferElem MicroBitCircularBuffer::pop(){
             return ret;
         }
     }
-    circBufferElem retElem = {.type=TYPE_NONE};
+    circBufferElem retElem ;
+    retElem.type=TYPE_NONE;
     return retElem;
 }
 
 
 circBufferElem MicroBitCircularBuffer::get(int index){
     int count =0;
-    uint8_t* current = NULL;
+    int current = 0;
     TypeMeta *meta = typeMetas[0];
-    int i=0;
-    for(i=0;i<MICROBIT_FASTLOG_TYPE_COUNT;i++){
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;i++){
         meta = typeMetas[i];
         if(meta == NULL){
             continue;
         }
         current = meta->start;
         if(meta->last < meta->start){
-            while(current+meta->bytes<=dataEnd){
+            while(current+meta->bytes<=currentByteMax){
                 if(index==count){
-                    goto getValueFound;
+                    return _getElem((ValueType)i, current);
                 }
                 current+=meta->bytes;
                 count+=1;
             }
-            current=dataStart;
+            current=0;
         }
         while(current<=meta->last){
             if(index==count){
-                goto getValueFound;
+                return _getElem((ValueType)i, current);
             }
             count+=1;
             current+=meta->bytes;
@@ -266,28 +254,26 @@ circBufferElem MicroBitCircularBuffer::get(int index){
     circBufferElem ret;
     ret.type= TYPE_NONE;
     return ret;
-getValueFound:
-    return _generateRet((ValueType)i, current);
 }
 
 
 int MicroBitCircularBuffer::count(){
-    if (!(status & MICROBIT_FASTLOG_STATUS_INITIALIZED)){
+    if (!(status & MICROBIT_CIRCULAR_BUFFER_STATUS_INITIALIZED)){
         return 0;
     }
 
     TypeMeta* meta = typeMetas[0];
     int count=0;
-    for(int i=0;i<MICROBIT_FASTLOG_TYPE_COUNT;i++){
+    for(int i=0;i<MICROBIT_CIRCULAR_BUFFER_TYPE_COUNT;i++){
         meta = typeMetas[i];
         if(typeMetas[i]!=NULL){
-            uint8_t* current = meta->start;
+            int current = meta->start;
             if(meta->last < meta->start){
-                while(current+meta->bytes<=dataEnd){
+                while(current+meta->bytes<=currentByteMax){
                     count+=1;
                     current+=meta->bytes;
                 }
-                current=dataStart;
+                current=0;
             }
             while(current<=meta->last){
                 count+=1;
@@ -300,6 +286,81 @@ int MicroBitCircularBuffer::count(){
 
 
 
+
+circBufferElem MicroBitCircularBuffer::_getElem(ValueType type, int index){
+    uint8_t temp[4];
+    int bytesToCopy=typeMetas[type]->bytes;
+    for(int i=0;i<bytesToCopy;i++){
+        int curI=index+i;
+        int bufferToUse = curI / MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+        int indexInBuffer = curI % MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+        temp[i]=dataBuffers[bufferToUse][indexInBuffer];
+    }
+    circBufferElem ret;
+    ret.type= TYPE_NONE;
+    if(type==TYPE_UINT8){
+        ret.type=TYPE_UINT32;
+        ret.value.uint32Val=*(uint8_t*)temp;
+    }else if(type==TYPE_UINT16){
+        ret.type=TYPE_UINT32;
+        ret.value.uint32Val=*(uint16_t*)temp;
+    }else if(type==TYPE_UINT32){
+        ret.type=TYPE_UINT32;
+        ret.value.uint32Val=*(uint32_t*)temp;
+    }else if(type==TYPE_INT16){
+        ret.type=TYPE_INT32;
+        ret.value.int32Val=*(int16_t*)temp;
+    }else if(type==TYPE_INT32){
+        ret.type=TYPE_INT32;
+        ret.value.uint32Val=*(int32_t*)temp;
+    }else if(type==TYPE_FLOAT){
+        ret.type=TYPE_FLOAT;
+        ret.value.floatVal=*(float*)temp;
+    }
+    return ret;
+}
+
+bool MicroBitCircularBuffer::_insertElement(int index, uint8_t* data,int bytes){
+    if(maxBufferSize!=currentByteMax){
+        if((index+8) > currentByteMax){
+            if(allocatedBuffers!=MICROBIT_CIRCULAR_BUFFER_MAX_DATA_BUFFERS){
+                int toAlloc=MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+                if(maxBufferSize!=-1){
+                    if((maxBufferSize-currentByteMax)<toAlloc){
+                        toAlloc=maxBufferSize-currentByteMax;
+                    }
+                }
+                if(toAlloc>0){
+                    dataBuffers[allocatedBuffers]=(uint8_t*)malloc(toAlloc);
+                    if(dataBuffers[allocatedBuffers]!=NULL){
+                        currentByteMax+=toAlloc;
+                        allocatedBuffers+=1;
+                        if(allocatedBuffers==MICROBIT_CIRCULAR_BUFFER_MAX_DATA_BUFFERS){
+                            maxBufferSize=currentByteMax;
+                        }
+                    }else{
+                        maxBufferSize=currentByteMax;
+                    }
+                }
+            }
+        }
+    }
+    int bufferToUse = index / MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+    int indexInBuffer = index % MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+    int spaceInBuffer = MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION-indexInBuffer;
+    if(spaceInBuffer<bytes){
+        memcpy(dataBuffers[bufferToUse]+indexInBuffer,data,spaceInBuffer);
+        index+=spaceInBuffer;
+
+        bufferToUse = index / MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+        indexInBuffer = index % MICROBIT_CIRCULAR_BUFFER_MAX_SINGLE_ALLOCATION;
+        memcpy(dataBuffers[bufferToUse]+indexInBuffer,data+spaceInBuffer,bytes-spaceInBuffer);
+    }else{
+        memcpy(dataBuffers[bufferToUse]+indexInBuffer,data,bytes);
+    }
+    return true;
+}
+
 /**
  * Internal function used to add a number of bytes provided to the head of the buffer
  * Assumes that the value provided matches the type of the buffer region metadata provided
@@ -308,134 +369,102 @@ int MicroBitCircularBuffer::count(){
  */
 void MicroBitCircularBuffer::_logData(ValueType type,uint8_t* data){
     init();
-    if(typeMetas[type]->start==NULL){
-        typeMetas[type]->next=dataStart;
-        typeMetas[type]->start=dataStart;
-        typeMetas[type]->last=dataStart;
-        bool abool = false;
-        for(int i=type-1;i>=0;i--){
-            if(typeMetas[i]!=NULL){
-                abool=true;
-            }
-        }
-        if(!abool){
-            typeMetas[type]->next=dataStart+typeMetas[type]->bytes;
-            memcpy(typeMetas[type]->start,data,typeMetas[type]->bytes);
-            return;
-        }
+    if(typeMetas[type]->start==-1){
+        typeMetas[type]->next=0;
+        typeMetas[type]->start=0;
+        typeMetas[type]->last=0;
         for(int i=type-1;i>=0;i--){
             if(typeMetas[i]!=NULL){
                 typeMetas[type]->next=typeMetas[i]->next;
-                typeMetas[type]->last=typeMetas[i]->last+typeMetas[i]->bytes;
+                typeMetas[type]->last=typeMetas[i]->last+typeMetas[i]->bytes-typeMetas[type]->bytes;
                 break;
             }
         }
-        if((typeMetas[type]->next+typeMetas[type]->bytes)>dataEnd){
-            typeMetas[type]->next=dataStart;
+        if((typeMetas[type]->next+typeMetas[type]->bytes)>currentByteMax){
+            typeMetas[type]->next=0;
         }
         typeMetas[type]->start=typeMetas[type]->next;
-        for(int i=type-1;i>=0;i--){
-            if(typeMetas[i]!=NULL){
-                _clearRegion((ValueType)i,typeMetas[type]->last,typeMetas[type]->next+typeMetas[type]->bytes);
-            }
-        }
     }else{
-        for(int i=type-1;i>=0;i--){
-            if(typeMetas[i]!=NULL){
-                _clearRegion((ValueType)i,typeMetas[type]->last+typeMetas[type]->bytes,typeMetas[type]->next+typeMetas[type]->bytes);
+        if(typeMetas[type]->next<=typeMetas[type]->start){
+            if((typeMetas[type]->next+typeMetas[type]->bytes)>typeMetas[type]->start){
+                if(typeMetas[type]->start==typeMetas[type]->last){
+                    typeMetas[type]->start=typeMetas[type]->next;
+                    typeMetas[type]->last=typeMetas[type]->next;
+                }else{
+                    typeMetas[type]->start=typeMetas[type]->start+typeMetas[type]->bytes;
+                    if((typeMetas[type]->start+typeMetas[type]->bytes)>currentByteMax){
+                        typeMetas[type]->start=0;
+                    }
+                }
             }
-        }
-        int bytes = typeMetas[type]->bytes;
-        _clearRegion(type,typeMetas[type]->next,typeMetas[type]->next+typeMetas[type]->bytes);
-        if(typeMetas[type]==NULL){
-            typeMetas[type]=(TypeMeta*)malloc(sizeof(TypeMeta));
-            typeMetas[type]->bytes=bytes;
-            typeMetas[type]->start=dataStart;
-            typeMetas[type]->last=dataStart;
-            typeMetas[type]->next=dataStart;
         }
     }
-    memcpy(typeMetas[type]->next,data,typeMetas[type]->bytes);
-    typeMetas[type]->last=typeMetas[type]->next;
+    for(int i=type-1;i>=0;i--){
+        if(typeMetas[i]!=NULL){
+            _clearRegion((ValueType)i,typeMetas[type]->last+typeMetas[type]->bytes,typeMetas[type]->next+typeMetas[type]->bytes);
+        }
+    }
 
+    _insertElement(typeMetas[type]->next,data,typeMetas[type]->bytes);
+    typeMetas[type]->last=typeMetas[type]->next;
     typeMetas[type]->next= typeMetas[type]->next+typeMetas[type]->bytes;
-    if((typeMetas[type]->next+typeMetas[type]->bytes)>dataEnd){
-        typeMetas[type]->next=dataStart;
+
+    if((typeMetas[type]->next+typeMetas[type]->bytes)>currentByteMax){
+        typeMetas[type]->next=0;
     }
 }
 
-/**
- * Internal function used to remove elements from the back of the buffer
- * Continuously removes the oldest elements until the provided address region is unoccupied
- * If all elements of a given type are removed the metadata for the region is freed
- *
- * @param metaPtr pointer to the metadata for a region in the circular buffer to be cleared
- * @param from start address of the region to be cleared
- * @param to end address of the region to be cleared
- */
-void MicroBitCircularBuffer::_clearRegion(ValueType type, uint8_t* from, uint8_t* to){
+void MicroBitCircularBuffer::_clearRegion(ValueType type, int from, int to){
     if(typeMetas[type]==NULL){
         return;
     }
-    TypeMeta* meta = typeMetas[type];
-    if(to<from){
-        //clear from from to end, then 0 to from
-        _clearRegion(type,from,dataEnd);
-        return _clearRegion(type,dataStart,to);
-    }
 
-    if(meta->start==meta->last){
-        if(meta->start >=to){
-            return;
-        }
-        if(meta->start <from){
-            return;
-        }
+    TypeMeta* meta = typeMetas[type];
+    if(to==from){
         free(typeMetas[type]);
         typeMetas[type]=NULL;
         return;
     }
-    //from itn16Start to int16End
-    //if from to is outside of this range then just return
-    if(meta->start < meta->last){
-        if(meta->last<from){
+
+    if(to<from){
+        if(from<currentByteMax){
+            _clearRegion(type,from,currentByteMax);
+        }
+        if(to!=0){
+            _clearRegion(type,0,to);
+        }
+        return;
+    }
+
+    if(meta->start<=meta->last){
+        if((meta->last+meta->bytes)<=from){
             return;
         }
         while(meta->start<to){
-            uint8_t* possibleNext = meta->start+meta->bytes;
-            meta->start=possibleNext;
-            if(meta->start > meta->last){
+            meta->start=meta->start+meta->bytes;
+            if(meta->start>meta->last){
                 free(typeMetas[type]);
                 typeMetas[type]=NULL;
                 return;
             }
         }
         return;
-    }else if(meta->start>meta->last){
-        //last is greater than start
-        if((meta->last < from)&&(meta->start >=to)){
+    }else{
+        if(((meta->last+meta->bytes) <= from)&&(meta->start >=to)){
             return;
         }
-
-        bool flag=false;
-        if(meta->start >to){
-            //reset start to 0
-            meta->start=dataStart;
-            flag=true;
-        }
-        while(meta->start <to){
-            uint8_t* possibleNext = meta->start+meta->bytes;
-            meta->start=possibleNext;
-            if(flag==true){
-                if(meta->start > meta->last){
-                    free(typeMetas[type]);
-                    typeMetas[type]=NULL;
-                    return;
-                }
+        while(meta->start<to){
+            meta->start=meta->start+meta->bytes;
+            if((meta->start+meta->bytes)>currentByteMax){
+                meta->start=0;
+                return _clearRegion(type,from,to);
             }
         }
-        if(to==dataEnd){
-            meta->start=dataStart;
+        if((meta->last+meta->bytes)<=from){
+            return;
         }
+        meta->start=0;
+        return _clearRegion(type,from,to);
     }
+
 }

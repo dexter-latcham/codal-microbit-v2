@@ -72,7 +72,7 @@ void MicroBitFastLog::init(){
     }
 
     if(logger==NULL){
-        logger = new MicroBitCircularBuffer(1000);
+        logger = new MicroBitCircularBuffer();
     }
 
     logStartTime = system_timer_current_time();
@@ -377,6 +377,7 @@ static ManagedString _generateTimeFormatString(TimeStampFormat format){
     }
 }
 
+
 void MicroBitFastLog::saveLog(){
     if (!(status & MICROBIT_FASTLOG_STATUS_INITIALIZED)){
         return;
@@ -398,8 +399,11 @@ void MicroBitFastLog::saveLog(){
 
     circBufferElem elem;
     int timeOffset;
-    for(int i=0;i<extraCells;i++){
-        elem = logger->pop();
+
+    if(extraCells!=0){
+        for(int i=0;i<extraCells;i++){
+            elem = logger->pop();
+        }
     }
 
     ManagedString timeStampString = _generateTimeFormatString(timeStampFormat);
@@ -427,89 +431,3 @@ void MicroBitFastLog::saveLog(){
         log.endRow();
     }
 }
-
-// ManagedString MicroBitFastLog::getRow(int row){
-//     if(row<0){
-//         int start = row*columnCount;
-//         int end = start+columnCount;
-//         circBufferElem returnedElem = logger->getElem(start);
-//         ManagedString ret = _bufferRetToString(returnedElem);
-//         for(int i=start+1;i<end;i++){
-//             returnedElem = logger->getElem(i);
-//             ret=ret+","+_bufferRetToString(returnedElem);
-//         }
-//         return ret;
-//     }
-//     return ManagedString::EmptyString;
-// }
-
-// ManagedString MicroBitFastLog::getHeaders(int index){
-//     init();
-//     if(index>=columnCount){
-//         return ManagedString::EmptyString;
-//     }
-//     return rowData[index].key;
-// }
-
-// ManagedString MicroBitFastLog::getHeaders(){
-//     init();
-//     if(rowData[0].key==ManagedString::EmptyString){
-//         return ManagedString::EmptyString;
-//     }
-
-//     ManagedString result;
-//     result = result+rowData[0].key;
-//     for(uint32_t i=1;i<columnCount;i++){
-//         if(rowData[i].key!=ManagedString::EmptyString){
-//             result = result+","+rowData[i].key;
-//         }
-//     }
-//     return result;
-// }
-
-// uint16_t MicroBitFastLog::getNumberOfHeaders(){
-//     init();
-//     uint16_t count=0;
-//     for(int i=0;i<columnCount;i++){
-//         if(rowData[i].key!=ManagedString::EmptyString){
-//             count++;
-//         }
-//     }
-//     return count;
-// }
-
-// uint16_t MicroBitFastLog::getNumberOfRows(){
-//     init();
-//     int entries = logger->getElementCount();
-//     int extraCells = entries % columnCount;
-//     return (entries - extraCells) / columnCount;
-// }
-
-
-
-
-// void MicroBitFastLog::logData(const char *key, uint16_t value) {
-//     return logData(ManagedString(key), value);
-// }
-
-// void MicroBitFastLog::logData(const char *key, int32_t value) {
-//     return logData(ManagedString(key), value);
-// }
-
-
-// void MicroBitFastLog::logData(const char *key, double value) {
-//     return logData(ManagedString(key), (float)value);
-// }
-
-// void MicroBitFastLog::logData(ManagedString key, uint16_t value){
-//     uint32_t value32 = (uint32_t)value;
-//     _storeValue(key,TYPE_UINT32,&value32);
-// }
-
-// void MicroBitFastLog::logData(ManagedString key, int32_t value){
-//     _storeValue(key,TYPE_INT32,&value);
-// }
-
-// void MicroBitFastLog::logData(ManagedString key, double value){
-//     logData(key,(float)value);
-// }

@@ -80,26 +80,3 @@ private:
 
 }
 #endif
-
-    // ManagedString getHeaders();
-
-    // ManagedString getHeaders(int index);
-
-    // ManagedString getRow(int row);
-    // uint16_t getNumberOfRows();
-
-    // uint16_t getNumberOfHeaders();
-//
-
-    // void logData(const char *key, double value);
-    // void logData(ManagedString key, double value);
-
-    // void logData(const char *key, uint16_t value);
-    // void logData(ManagedString key, uint16_t value);
-
-    // void logData(const char *key, int32_t value);
-    // void logData(ManagedString key, int32_t value);
-
-    // void logData(const char *key, float value);
-    // void logData(ManagedString key, float value);
-
