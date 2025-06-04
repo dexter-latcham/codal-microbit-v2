@@ -43,7 +43,7 @@ class graphHandler {
 
         this.checkHeaders();
         for(let i=0;i<this.microbitHandlers.length;i++){
-            let rowsToAdd = this.microbitHandlers[i].data.slice(this.dataParsedUpto[i]);
+            let rowsToAdd = JSON.parse(JSON.stringify(this.microbitHandlers[i].data.slice(this.dataParsedUpto[i])));
             this.dataParsedUpto[i]=this.microbitHandlers[i].data.length;
             if(rowsToAdd.length!=0){
                 for(let rowIndex=0;rowIndex<rowsToAdd.length;rowIndex++){

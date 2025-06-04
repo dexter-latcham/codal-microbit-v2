@@ -64,7 +64,7 @@ class btLog{
 
     async updateHeaders(){
         if(this.headerCount!=this.headers.length){
-            for(let i=this.headers.length-1;i<this.headerCount;i++){
+            for(let i=this.headers.length;i<this.headerCount;i++){
                 this.headers.push(await this.getHeader(i));
             }
         }
@@ -128,10 +128,6 @@ class btLog{
             const view = new DataView(buffer);
             view.setUint16(0, number, true);
 
-            if (!char._notificationsStarted) {
-                await char.startNotifications();
-                char._notificationsStarted = true;
-            }
             return await new Promise((resolve, reject) => {
                 let accumulated = '';
                 const decoder = new TextDecoder('utf-8');
@@ -147,10 +143,12 @@ class btLog{
                     }
                 };
                 char.addEventListener('characteristicvaluechanged', handler);
-                char.writeValue(buffer).catch(error => {
-                    char.removeEventListener('characteristicvaluechanged', handler);
-                    reject(error);
-                });
+                setTimeout(() => {
+                    char.writeValue(buffer).catch(error => {
+                        char.removeEventListener('characteristicvaluechanged', handler);
+                        reject(error);
+                    });
+                }, 50);
                 setTimeout(() => {
                     char.removeEventListener('characteristicvaluechanged', handler);
                     reject(new Error('Timeout while waiting for full header'));
@@ -219,6 +217,8 @@ class btLog{
 
     async onConnected(){
         console.log("on connect")
+
+        await this.characteristics.GETHEADER.startNotifications();
         const countValue = await this.characteristics.HEADERCOUNT.readValue();
         this.headerCount = countValue.getUint16(0, true);
         for(let i=0;i<this.headerCount;i++){
@@ -274,5 +274,4 @@ class btLog{
         console.error("Bluetooth connection failed:", error);
     }
 }
-
 
