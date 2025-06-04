@@ -42,7 +42,7 @@ MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_l
 
     CreateCharacteristic(mbbs_cIdxGETHEADER, charUUID[mbbs_cIdxGETHEADER],
                          getHeaderBuffer->txBuffer,0, MICROBIT_LOGBT_MAX_BYTES,
-                         microbit_propWRITE|microbit_propINDICATE);
+                         microbit_propREAD|microbit_propWRITE|microbit_propINDICATE);
 
     CreateCharacteristic(mbbs_cIdxHEADERCOUNT, charUUID[mbbs_cIdxHEADERCOUNT],
                          (uint8_t *)&headerCount, sizeof(headerCount), sizeof(headerCount),
@@ -54,7 +54,7 @@ MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_l
 
     CreateCharacteristic(mbbs_cIdxNEWROWLOGGED, charUUID[mbbs_cIdxNEWROWLOGGED],
                          newRowBuffer->txBuffer, 0, MICROBIT_LOGBT_MAX_BYTES,
-                         microbit_propINDICATE);
+                         microbit_propREAD|microbit_propINDICATE);
     if (getConnected()){
         listen(true);
     }
@@ -63,8 +63,6 @@ MicroBitLogService::MicroBitLogService(BLEDevice &_ble,MicroBitLog &_log):log(_l
 void MicroBitLogService::listen(bool yes) {
     if (EventModel::defaultEventBus) {
         if (yes) {
-            rowCount = log.getNumberOfRows();
-            headerCount = log.getNumberOfHeaders();
             EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::updateRowCount,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
             EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW, this, &MicroBitLogService::newRowLogged,MESSAGE_BUS_LISTENER_DROP_IF_BUSY);
             EventModel::defaultEventBus->listen(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_HEADER, this, &MicroBitLogService::newHeaderEvent);
@@ -147,25 +145,20 @@ void MicroBitLogService::onConfirmation( const microbit_ble_evt_hvc_t *params) {
 /**
   * Callback. Invoked when any of our attributes are written via BLE.
   */
-void MicroBitLogService::onDataWritten(const microbit_ble_evt_write_t *params)
-{
+void MicroBitLogService::onDataWritten(const microbit_ble_evt_write_t *params) {
     if (params->handle == valueHandle(mbbs_cIdxNEWROWLOGGED)){
     }else if (params->handle == valueHandle(mbbs_cIdxGETHEADER) && params->len >= sizeof(uint16_t)){
         uint16_t requestedHeader;
         memcpy(&requestedHeader,params->data,sizeof(requestedHeader));
         ManagedString returnedHeader = log.getHeader(requestedHeader);//0 indexed
-        if(returnedHeader != ManagedString::EmptyString){
-            returnedHeader=returnedHeader+"\n";
-            _sendToBuffer(getHeaderBuffer,(uint8_t*)returnedHeader.toCharArray(),returnedHeader.length());
-        }
-    }else if (params->handle == valueHandle(mbbs_cIdxGETROW) && params->len >= sizeof(uint16_t)){
-        uint16_t requestedRow;
+        returnedHeader=returnedHeader+"\n";
+        _sendToBuffer(getHeaderBuffer,(uint8_t*)returnedHeader.toCharArray(),returnedHeader.length());
+    }else if (params->handle == valueHandle(mbbs_cIdxGETROW) && params->len >= sizeof(int16_t)){
+        int16_t requestedRow;
         memcpy(&requestedRow,params->data,sizeof(requestedRow));
         ManagedString returnedRow = log.getRow(requestedRow);//0 indexed
-        if(returnedRow != ManagedString::EmptyString){
-            returnedRow=returnedRow+"\n";
-            _sendToBuffer(getRowNBuffer,(uint8_t*)returnedRow.toCharArray(),returnedRow.length());
-        }
+        returnedRow=returnedRow+"\n";
+        _sendToBuffer(getRowNBuffer,(uint8_t*)returnedRow.toCharArray(),returnedRow.length());
     }
 }
 

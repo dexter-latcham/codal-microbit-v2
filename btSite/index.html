@@ -126,7 +126,6 @@
                 const tb = new table(lh);
                 console.log("new table");
                 tableInstances.push(tb);
-                console.log("updating device list");
                 updateDeviceList();
                 graphTest.addDevice(lh);
             } catch (e) {
@@ -180,48 +179,44 @@
                 }
                 this.dataBody.innerHTML = '';
                 if (data && data.length > 0) {
-                    data.forEach(rowData => {
-                        const row = document.createElement('tr');
-                        rowData.forEach(cell => {
-                            const td = document.createElement('td');
-                            if (!isNaN(cell) && cell !== null && cell !== '') {
-                                td.textContent = Number(cell).toPrecision(5);
-                            }else{
-                                td.textContent = cell;
+                    for(let dataI=0;dataI<data.length;dataI++){
+                        let newDataRow=[];
+                        let validRow=true;
+                        for(let rowI=0;rowI<data[dataI].length;rowI++){
+                            let elem = data[dataI][rowI];
+                            let toPush = NaN;
+                            if (!isNaN(elem) && elem !== null && elem !== '') {
+                                toPush=Number(elem).toPrecision(5);
                             }
-                            row.appendChild(td);
-                        });
-                        this.dataBody.appendChild(row);
-                    });
+                            if(!isNaN(toPush)){
+                                newDataRow.push(toPush);
+                            }else{
+                                validRow=false;
+                            }
+                        }
+                        if(validRow==true){
+                            const row = document.createElement('tr');
+                            newDataRow.forEach(cell => {
+                                const td = document.createElement('td');
+                                td.textContent = cell;
+                                row.appendChild(td);
+                            });
+                            this.dataBody.appendChild(row);
+                        }
+                    }
                 }
             }
         }
+
         function updateTables(){
             graphTest.update();
             for(let i=0;i<tableInstances.length;i++){
                 tableInstances[i].updateTable();
             }
         }
+
         setInterval(updateTables, 1000);
 
         </script>
     </body>
 </html>
-
-        <!-- setInterval(updateGraphfunc, 1000); -->
-        <!-- let graphthing = new graph(); -->
-
-        <!-- function updateGraphfunc(){ -->
-        <!--     if (selectedDeviceIndex >= 0) { -->
-        <!--         const device = connectedDevices[selectedDeviceIndex]; -->
-        <!--         graphthing.updateGraph(device.headers, device.data); -->
-        <!--     } -->
-        <!-- } -->
-
-
-        <!-- <table id="logTable" border="1"> -->
-        <!--     <thead> -->
-        <!--         <tr id="headerRow"></tr> -->
-        <!--     </thead> -->
-        <!--     <tbody id="dataBody"></tbody> -->
-        <!-- </table> -->

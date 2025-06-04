@@ -1147,8 +1147,7 @@ int MicroBitLog::_readSource( uint8_t *&data, uint32_t &index, uint32_t &len, ui
 * @param fromRowIndex 0-based index of starting row: bumped up to 0 if negative.
 * @return number of rows + header.
 */
-uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
-{
+uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex){
     constexpr uint8_t rowSeparator = 10; // newline char
     uint32_t rowCount = 0;
 
@@ -1176,6 +1175,66 @@ uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
     return rowCount;
 }
 
+ManagedString MicroBitLog::getRow(int fromRowIndex) {
+    if (!(status & MICROBIT_LOG_STATUS_INITIALIZED)) {
+        return ManagedString::EmptyString;
+    }
+    if (dataEnd == dataStart)
+        return ManagedString("", 0);
+
+    constexpr uint8_t rowSeparator = 10; // newline character in ASCII
+
+    uint32_t startOfRow = dataStart;
+    uint32_t endOfDataChunk = dataEnd;
+
+    bool startRowFound = (fromRowIndex == 0);
+
+    if (fromRowIndex < 0) {
+        int32_t currentPos = dataEnd - 1;
+        int32_t rowIndex = 0;
+        uint8_t c = 0;
+        while (currentPos >= (int32_t)dataStart) {
+            cache.read(currentPos, &c, 1);
+            if (c == rowSeparator) {
+                if (rowIndex == fromRowIndex) {
+                    startOfRow = currentPos + 1;
+                    startRowFound=true;
+                    break;
+                }
+                endOfDataChunk = currentPos;
+                rowIndex--;
+            }
+            currentPos--;
+        }
+    } else {
+        uint32_t currentPos = dataStart;
+        uint32_t rowSeparatorCount = 0;
+        uint8_t c = 0;
+        while (c != 0xFF && currentPos < dataEnd) {
+            cache.read(currentPos, &c, 1);
+
+            if (c == rowSeparator) {
+                rowSeparatorCount++;
+                if (!startRowFound && rowSeparatorCount == fromRowIndex) {
+                    startOfRow = currentPos + 1;
+                    startRowFound = true;
+                } else if (startRowFound && rowSeparatorCount == fromRowIndex + 1) {
+                    endOfDataChunk = currentPos;
+                    break;
+                }
+            }
+            currentPos++;
+        }
+    }
+    if (!startRowFound){
+        return ManagedString("", 0);
+    }
+    int dataLength = endOfDataChunk - startOfRow;
+    char row[dataLength];
+    cache.read(startOfRow, row, dataLength);
+    return ManagedString(row, dataLength);
+}
+
 /**
 * Get n rows worth of logged data as a ManagedString.
 * @param fromRowIndex 0-based index of starting row.
@@ -1184,6 +1243,9 @@ uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex)
 */
 ManagedString MicroBitLog::getRows(uint32_t fromRowIndex, int nRows)
 {
+    if (!(status & MICROBIT_LOG_STATUS_INITIALIZED)){
+        return ManagedString::EmptyString;
+    }
     if (fromRowIndex >= dataEnd || nRows <= 0)
         return ManagedString("", 0);
 
@@ -1234,76 +1296,76 @@ ManagedString MicroBitLog::getRows(uint32_t fromRowIndex, int nRows)
 
 extern MicroBit uBit;
 
-/**
-* Get a single row at the given index
-* -1 returns the last row, all other negatives are invalid
-* @param rowIndex 0-based index of row.
-* @return ManagedString values in the row separated by a comma
-*/
-ManagedString MicroBitLog::getRow(int rowIndex) {
-    if(rowIndex < -1){
-        return ManagedString::EmptyString;
-    }
-    if(rowIndex != -1){
-        if(rowIndex>=dataEnd){
-            return ManagedString::EmptyString;
-        }
-    }
+// /**
+// * Get a single row at the given index
+// * -1 returns the last row, all other negatives are invalid
+// * @param rowIndex 0-based index of row.
+// * @return ManagedString values in the row separated by a comma
+// */
+// ManagedString MicroBitLog::getRow(int rowIndex) {
+//     if(rowIndex < -1){
+//         return ManagedString::EmptyString;
+//     }
+//     if(rowIndex != -1){
+//         if(rowIndex>=dataEnd){
+//             return ManagedString::EmptyString;
+//         }
+//     }
 
-    constexpr uint8_t rowSeparator = 10; // newline character
-    int rowCount = 0;
-    uint32_t pos = dataStart;
+//     constexpr uint8_t rowSeparator = 10; // newline character
+//     int rowCount = 0;
+//     uint32_t pos = dataStart;
 
-    uint32_t rowStart=dataStart-1;
-    uint32_t rowEnd=dataStart-1;
+//     uint32_t rowStart=dataStart-1;
+//     uint32_t rowEnd=dataStart-1;
 
-    uint8_t c = 0;
+//     uint8_t c = 0;
 
-    bool findLastRow = false;
-    if(rowIndex == -1){
-        findLastRow=true;
-    }
+//     bool findLastRow = false;
+//     if(rowIndex == -1){
+//         findLastRow=true;
+//     }
 
-    while (c != 0xff) {
-        cache.read(pos, &c, 1);
-        if (c == rowSeparator) {
-            rowCount++;
-            rowStart=rowEnd+1;
-            rowEnd=pos;
-            if(!findLastRow){
-                if(rowCount==(rowIndex+1)){
-                    break;
-                }
-            }
-        }
-        pos++;
-    }
-    if(!findLastRow){
-        if(rowCount <= rowIndex){
-            return ManagedString::EmptyString;
-        }
-        if(rowEnd <= rowStart){
-            return ManagedString::EmptyString;
-        }
-    }
+//     while (c != 0xff) {
+//         cache.read(pos, &c, 1);
+//         if (c == rowSeparator) {
+//             rowCount++;
+//             rowStart=rowEnd+1;
+//             rowEnd=pos;
+//             if(!findLastRow){
+//                 if(rowCount==(rowIndex+1)){
+//                     break;
+//                 }
+//             }
+//         }
+//         pos++;
+//     }
+//     if(!findLastRow){
+//         if(rowCount <= rowIndex){
+//             return ManagedString::EmptyString;
+//         }
+//         if(rowEnd <= rowStart){
+//             return ManagedString::EmptyString;
+//         }
+//     }
 
-    if(rowEnd == dataStart-1){
-        if(findLastRow){
-            return ManagedString::EmptyString;
-        }
-        rowEnd=dataEnd;
-    }
+//     if(rowEnd == dataStart-1){
+//         if(findLastRow){
+//             return ManagedString::EmptyString;
+//         }
+//         rowEnd=dataEnd;
+//     }
 
-    if(rowStart==dataStart-1){
-        rowStart=dataStart;
-    }
+//     if(rowStart==dataStart-1){
+//         rowStart=dataStart;
+//     }
 
 
-    const int dataLength = rowEnd - rowStart;
-    char rows[dataLength];
-    cache.read(rowStart, rows, dataLength);
-    return ManagedString(rows, dataLength);
-}
+//     const int dataLength = rowEnd - rowStart;
+//     char rows[dataLength];
+//     cache.read(rowStart, rows, dataLength);
+//     return ManagedString(rows, dataLength);
+// }
 
 uint32_t MicroBitLog::getNumberOfHeaders(){
     if (!(status & MICROBIT_LOG_STATUS_INITIALIZED)){
@@ -1319,7 +1381,6 @@ ManagedString MicroBitLog::getHeader(uint16_t headerNo){
     if(headerNo >= headingCount){
         return ManagedString::EmptyString;
     }
-
     if(headerNo < 0){
         return ManagedString::EmptyString;
     }

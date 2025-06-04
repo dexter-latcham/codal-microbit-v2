@@ -85,7 +85,7 @@ class btLog{
             const char = this.characteristics.GETROW;
             const buffer = new ArrayBuffer(2);
             const view = new DataView(buffer);
-            view.setUint16(0, number, true);
+            view.setInt16(0, number, true);
 
             await char.startNotifications();
             return await new Promise((resolve, reject) => {
@@ -121,6 +121,7 @@ class btLog{
     }
 
     async getHeader(number) {
+        console.log("getting header: "+number)
         try {
             const char = this.characteristics.GETHEADER;
             const buffer = new ArrayBuffer(2);
@@ -162,12 +163,14 @@ class btLog{
     }
 
     async handleHeaderCount(event){
+        console.log("header count changed")
         const value = event.target.value;
         let newHeaderCount = value.getUint16(0,true);
         this.headerCount=newHeaderCount;
     }
 
     async handleNewRow(event) {
+        console.log("new row event")
         const value = event.target.value;
         const decoder = new TextDecoder('utf-8');
         const receivedText = decoder.decode(value);
@@ -190,7 +193,9 @@ class btLog{
         return rowCount
     }
 
+
     async getStoredRows(){
+        console.log("getting stored rows")
         const rowCountBytes = await this.characteristics.ROWCOUNT.readValue();
         let rowCount = rowCountBytes.getUint16(0, true);
         let returnedRows=[];
@@ -200,6 +205,8 @@ class btLog{
                 returnedRows.push(rowN);
             }
         }
+
+        console.log("got stored rows")
         if(returnedRows.length!=0){
             this.data = [...returnedRows,...this.data]
         }
@@ -211,7 +218,7 @@ class btLog{
     }
 
     async onConnected(){
-
+        console.log("on connect")
         const countValue = await this.characteristics.HEADERCOUNT.readValue();
         this.headerCount = countValue.getUint16(0, true);
         for(let i=0;i<this.headerCount;i++){
@@ -222,6 +229,7 @@ class btLog{
 
         await this.getStoredRows()
 
+        console.log("enabling live rows")
         this.enableLiveRows()
     }
 
