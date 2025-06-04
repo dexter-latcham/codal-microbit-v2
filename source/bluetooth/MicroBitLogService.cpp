@@ -174,6 +174,7 @@ void MicroBitLogService::newRowLogged(MicroBitEvent) {
     if (!getConnected() || !indicateChrValueEnabled(newRowBuffer->characteristicId)){
         return;
     }
+
     ManagedString row = log.getRow(-1);
     if(row != ManagedString::EmptyString){
         row = row+"\n";

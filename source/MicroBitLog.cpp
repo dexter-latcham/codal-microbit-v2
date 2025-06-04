@@ -72,6 +72,7 @@ MicroBitLog::MicroBitLog(MicroBitUSBFlashManager &flash, MicroBitPowerManager &p
     this->timeStampChanged = false;
     this->rowData = NULL;
     this->timeStampFormat = TimeStampFormat::None;
+    this->rowCountTest=0;
 }
 
 /**
@@ -194,6 +195,7 @@ void MicroBitLog::init()
     }
 
     // Ensure the data file is visible to end users.
+    rowCountTest=getNumberOfStoredRows();
     _setVisibility(true);
 }
 
@@ -264,6 +266,7 @@ void MicroBitLog::_clear(bool fullErase)
     timeStampChanged = false;
     headingStart = 0;
     headingCount = 0;
+    rowCountTest=0;
     headingLength = 0;
 
     if (rowData)
@@ -660,7 +663,6 @@ int MicroBitLog::_endRow()
     if (!empty)
         _logString(row);
 
-    Event(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW);
     status &= ~MICROBIT_LOG_STATUS_ROW_STARTED;
 
     if (status & MICROBIT_LOG_STATUS_FULL)
@@ -820,6 +822,8 @@ int MicroBitLog::_logString(const char *s)
         cache.write(oldJournalHead, &empty, MICROBIT_LOG_JOURNAL_ENTRY_SIZE);
     }
 
+    rowCountTest+=1;
+    Event(MICROBIT_ID_LOG, MICROBIT_LOG_EVT_NEW_ROW);
     // Return NO_RESOURCES if we ran out of FLASH space.
     if (l == 0)
         return DEVICE_OK;
@@ -1142,17 +1146,18 @@ int MicroBitLog::_readSource( uint8_t *&data, uint32_t &index, uint32_t &len, ui
     return r;
 }
 
-/**
-* Get the number of rows (including the header) in the datalogger.
-* @param fromRowIndex 0-based index of starting row: bumped up to 0 if negative.
-* @return number of rows + header.
-*/
-uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex){
+
+uint32_t MicroBitLog::getNumberOfRows(){
+    init();
+    return rowCountTest;
+}
+
+uint32_t MicroBitLog::getNumberOfStoredRows(){
     constexpr uint8_t rowSeparator = 10; // newline char
     uint32_t rowCount = 0;
 
     uint32_t end = dataStart;
-    bool startRowFound = (fromRowIndex == 0) ? true : false;
+    bool startRowFound = true;
 
     // Read read until we see a 0xFF character (unused memory)
     uint8_t c = 0;
@@ -1161,7 +1166,7 @@ uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex){
         cache.read(end, &c, 1);
         if (c == rowSeparator) {
             rowCount++;
-            if (!startRowFound && fromRowIndex == rowCount) {
+            if (!startRowFound && rowCount==0) {
                 startRowFound = true;
                 rowCount = 0;
             }
@@ -1176,6 +1181,13 @@ uint32_t MicroBitLog::getNumberOfRows(uint32_t fromRowIndex){
 }
 
 ManagedString MicroBitLog::getRow(int fromRowIndex) {
+    if(fromRowIndex>0){
+        int negativeIndex = fromRowIndex-rowCountTest;
+        if(-negativeIndex<fromRowIndex){
+            fromRowIndex=negativeIndex;
+        }
+    }
+
     if (!(status & MICROBIT_LOG_STATUS_INITIALIZED)) {
         return ManagedString::EmptyString;
     }
@@ -1208,7 +1220,7 @@ ManagedString MicroBitLog::getRow(int fromRowIndex) {
         }
     } else {
         uint32_t currentPos = dataStart;
-        uint32_t rowSeparatorCount = 0;
+        int rowSeparatorCount = 0;
         uint8_t c = 0;
         while (c != 0xFF && currentPos < dataEnd) {
             cache.read(currentPos, &c, 1);

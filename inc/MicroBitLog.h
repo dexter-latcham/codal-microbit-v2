@@ -217,6 +217,7 @@ namespace codal
         uint32_t                        headingStart;       // Logical address of the start of the column header data. Zero if no data is present.
         uint32_t                        headingLength;      // The length (in bytes) of the column header data.
         uint32_t                        headingCount;       // Total number of headings in the current log.
+        uint32_t                        rowCountTest;       // Total number of headings in the current log.
         bool                            headingsChanged;    // Flag to indicate if a row has been added that contains new columns.
         bool                            timeStampChanged;   // Flag to indicate if a timestamp format has changed.
 
@@ -363,12 +364,9 @@ namespace codal
          */
         int readData(void *data, uint32_t index, uint32_t len, DataFormat format, uint32_t length);
 
-        /**
-        * Get the number of rows (including the header) in the datalogger.
-        * @param fromRowIndex 0-based index of starting row: bumped up to 0 if negative.
-        * @return number of rows + header.
-        */
-        uint32_t getNumberOfRows(uint32_t fromRowIndex = 0);
+
+        uint32_t getNumberOfRows();
+        uint32_t getNumberOfStoredRows();
 
         /**
         * Get n rows worth of logged data as a ManagedString.
